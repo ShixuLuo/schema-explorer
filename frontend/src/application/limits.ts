@@ -1,0 +1,15 @@
+export const LIMITS = {
+  fileBytes: 5 * 1024 * 1024,
+  batchBytes: 20 * 1024 * 1024,
+  files: 10,
+  rows: 50_000,
+  columns: 100,
+  cells: 200_000,
+  cellBytes: 8 * 1024,
+  recordBytes: 256 * 1024,
+  caseBytes: 40 * 1024 * 1024,
+  relationPairs: 32,
+  visibleRelations: 16,
+  evaluationRows: 200,
+  evaluationBytes: 256 * 1024,
+};

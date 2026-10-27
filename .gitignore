@@ -1,0 +1,9 @@
+/backend/target/
+.env
+*.db
+*.db-shm
+*.db-wal
+/node_modules/
+/dist/
+/.local/
+.DS_Store
