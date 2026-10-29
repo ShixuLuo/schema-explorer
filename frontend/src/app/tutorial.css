@@ -1,0 +1,90 @@
+.tutorial-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+.tutorial-shade {
+  position: fixed;
+  background: rgba(16, 21, 27, 0.68);
+  pointer-events: auto;
+}
+.tutorial-spotlight {
+  position: fixed;
+  border: 2px solid #e8ba60;
+  border-radius: 7px;
+  box-shadow: 0 0 0 3px #e8ba6030;
+  pointer-events: none;
+}
+.tutorial-popover {
+  position: fixed;
+  background: var(--panel-bg, #fff);
+  color: var(--text, #25313a);
+  padding: 18px;
+  border: 1px solid #d7dce0;
+  border-radius: 9px;
+  box-shadow: 0 8px 30px #0003;
+  pointer-events: auto;
+  font:
+    13px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+.tutorial-caption {
+  font-size: 11px;
+  color: #74808d;
+}
+.tutorial-popover h2 {
+  font-size: 17px;
+  margin: 9px 0;
+  font-weight: 600;
+}
+.tutorial-popover p {
+  margin: 0 0 18px;
+}
+.tutorial-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.landing-content > .open-use-case {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 112px;
+}
+.tutorial-secondary {
+  color: #7a838c;
+  font-size: 12px;
+  border-color: transparent;
+  background: transparent;
+  padding: 5px 2px;
+}
+.tutorial-secondary:hover:not(:disabled) {
+  color: #34465a;
+  border-color: transparent;
+  background: transparent;
+  text-decoration: underline;
+}
+.tutorial-actions {
+  align-items: center;
+  gap: 14px;
+}
+.tutorial-checkpoint-details {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e6ea;
+  font-size: 11px;
+  color: #6d7782;
+}
+.tutorial-checkpoint-details strong {
+  color: #28313b;
+  font-size: 12px;
+}
+
+.tutorial-popover {
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}

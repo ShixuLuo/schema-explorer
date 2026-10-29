@@ -1,5 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 const paths: Record<string, ReactNode> = {
+  book: (
+    <>
+      <path d="M12 5C8 2 4 3 2 4v15c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v14" />
+    </>
+  ),
   history: (
     <>
       <path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7M12 7v5l3 2" />

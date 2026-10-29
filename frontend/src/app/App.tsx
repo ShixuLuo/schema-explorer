@@ -1,3 +1,6 @@
+import Tutorial from "./Tutorial.tsx";
+import { createTutorialSample } from "./runtime.ts";
+import "./tutorial.css";
 import { readCsvHeaders } from "./runtime.ts";
 import type { CsvInput } from "../application/ports.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,6 +39,11 @@ import Icon from "../shared/Icon";
 import { createEditorSession, history, loadSql, workspace } from "./runtime.ts";
 import { runDataTask } from "./worker-client.ts";
 export default function App() {
+  const [tutorial, setTutorial] = useState<{
+    caseId: string;
+    returnId?: string;
+    key: number;
+  } | null>(null);
   const [cases, setCases] = useState<CaseInfo[]>([]);
   const [useCase, setCase] = useState<UseCase | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -429,6 +437,66 @@ export default function App() {
     }
   };
 
+  const startTutorial = async (restart = false) => {
+    if (busy) return;
+    const returnId = restart ? tutorial?.returnId : useCase?.id;
+    setBusy("Opening tutorial…");
+    try {
+      await session.current?.rollback();
+      session.current = null;
+      setEdit(null);
+      setShowSql(false);
+      setShowHistory(false);
+      setPreviewId(null);
+      const id = await createTutorialSample();
+      await load(id, true);
+      setDiagramMode("category");
+      setTutorial({ caseId: id, returnId, key: Date.now() });
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setBusy("");
+    }
+  };
+  const exitTutorial = async () => {
+    if (busy) return;
+    try {
+      await session.current?.rollback();
+      session.current = null;
+      setEdit(null);
+      setShowSql(false);
+      setShowHistory(false);
+      setPreviewId(null);
+      const returnId = tutorial?.returnId;
+      setTutorial(null);
+      if (returnId) await load(returnId, true);
+      else {
+        setCase(null);
+        setTables([]);
+        setDraft(null);
+        await refreshCases();
+      }
+    } catch (error) {
+      setError(String(error));
+    }
+  };
+
+  const finishTutorial = async (home: boolean) => {
+    if (busy) return;
+    setTutorial(null);
+    setEdit(null);
+    setShowSql(false);
+    setShowHistory(false);
+    setPreviewId(null);
+    setSavedComparison(null);
+    if (home) {
+      setCase(null);
+      setTables([]);
+      setDraft(null);
+      await refreshCases();
+    }
+  };
+
   return (
     <div
       className="app-shell"
@@ -463,6 +531,14 @@ export default function App() {
             >
               <Icon name="folder" size={16} />
               Open model
+            </button>
+            <button
+              className="open-use-case"
+              disabled={!!busy}
+              onClick={() => void startTutorial()}
+            >
+              <Icon name="book" size={16} />
+              Tutorial
             </button>
             {busy && (
               <div className="reading-status" role="status">
@@ -545,6 +621,16 @@ export default function App() {
                   <span className="schema-only-badge">Schema only</span>
                 )}
               <div className="toolbar-spacer" />
+              {!tutorial && (
+                <button
+                  className="toolbar-button"
+                  disabled={!!busy || workspaceLocked}
+                  onClick={() => void startTutorial()}
+                >
+                  <Icon name="book" size={14} />
+                  Tutorial
+                </button>
+              )}
               <button
                 className="toolbar-button history-control"
                 aria-label="Open history"
@@ -561,6 +647,7 @@ export default function App() {
                 <Icon name="down" size={12} />
               </button>
               <button
+                data-tutorial="export-sql"
                 className="toolbar-button"
                 onClick={() => {
                   setSqlRange(undefined);
@@ -634,6 +721,24 @@ export default function App() {
               )}
             </>
           }
+        />
+      )}
+      {tutorial && useCase?.id === tutorial.caseId && (
+        <Tutorial
+          key={tutorial.key}
+          draft={!!draft}
+          configured={!!draft && !draft.pendingParameters?.length}
+          editing={!!edit}
+          busy={!!busy}
+          showHistory={showHistory}
+          showSql={showSql}
+          committed={
+            tables.some((table) => table.name === "Shipment") && !draft
+          }
+          onExit={() => void exitTutorial()}
+          onRestart={() => void startTutorial(true)}
+          onExplore={() => void finishTutorial(false)}
+          onHome={() => void finishTutorial(true)}
         />
       )}
       {dragOver && (

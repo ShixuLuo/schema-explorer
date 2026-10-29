@@ -59,6 +59,7 @@ function CheckpointNode({ data }: NodeProps<HistoryNode>) {
       )}
       <span className="history-event-marker" aria-hidden="true" />
       <button
+        data-tutorial={data.editing ? "editing-checkpoint" : undefined}
         className="history-event-body nodrag nopan"
         aria-label={`Checkpoint: ${checkpoint.name}`}
         disabled={data.working}
@@ -303,6 +304,27 @@ function HistoryGraph({
             aria-label={tagEditor ? "Checkpoint tags" : "History node actions"}
             style={point}
           >
+            {!tagEditor && (
+              <div
+                className="tutorial-checkpoint-details"
+                data-tutorial="checkpoint-details"
+              >
+                <strong>{checkpoint.name}</strong>
+                <span>
+                  {checkpoint.operationCount ?? 0} recorded{" "}
+                  {checkpoint.operationCount === 1 ? "operation" : "operations"}
+                </span>
+                <span>
+                  Parent:{" "}
+                  {value.checkpoints.find(
+                    (item) => item.id === checkpoint.parentId,
+                  )?.name ?? "Start"}
+                </span>
+                {value.editing === checkpoint.id && (
+                  <span>Editing · current model</span>
+                )}
+              </div>
+            )}
             {tagEditor ? (
               <form
                 className="history-tag-editor"
