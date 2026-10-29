@@ -3,6 +3,7 @@ import type { SchemaSpec } from "../model/operations.ts";
 import type { AiContext } from "../ai/ai-context.ts";
 import { canonical, fingerprint } from "../ai/ai-proposal.ts";
 import { migrationAiBase, migrationProposalIsCurrent, requestMigrationParameters, type MigrationAiProposal } from "./ai-parameters.ts";
+import { mergeAssignments, replacedAssignments } from "./assignment-contract.ts";
 import type { Assignment, Plan } from "./migration-client.ts";
 import "./migration-ai.css";
 
@@ -24,14 +25,16 @@ export type MigrationAiAssistantProps = {
 type Pending = { proposal: MigrationAiProposal; baseline: Assignment[]; sourceKey: string; targetKey: string; baselineKey: string; candidateKey: string; candidateHash: string; applied: boolean };
 function checkCandidate(proposal: MigrationAiProposal, baseline: Assignment[], plan: Plan, target: SchemaSpec) {
   if (!Array.isArray(proposal.assignments) || !Array.isArray(proposal.changes) || !Array.isArray(proposal.replacedHoleIds) || !Array.isArray(proposal.missing) || proposal.status !== "valid" || proposal.validation?.status !== "valid" || proposal.missing.length > 0 || proposal.validation.holes?.some(h => !h.filled) || !Array.isArray(proposal.validation.holes)) throw Error("Invalid parameter proposal.");
-  const allowed = new Set([...(plan.holes ?? []).map(h => h.holeId), ...target.tables.map(t => `${t.id}.where`)]);
+  const allowed = new Set([...(plan.holes ?? []).map(h => h.holeId), ...target.tables.flatMap(t => [`${t.id}.where`, `${t.id}.population`])]);
   const changed = new Set<string>();
   for (const assignment of proposal.changes) {
     if (!assignment || typeof assignment.holeId !== "string" || !allowed.has(assignment.holeId) || changed.has(assignment.holeId) || !assignment.value || typeof assignment.value !== "object") throw Error("Invalid parameter proposal.");
     changed.add(assignment.holeId);
     if (baseline.some(a => a.holeId === assignment.holeId) && !proposal.replacedHoleIds.includes(assignment.holeId)) throw Error("Unconfirmed parameter replacement.");
   }
-  const merged = [...baseline.filter(a => !changed.has(a.holeId)), ...proposal.changes];
+  const required = replacedAssignments(baseline, proposal.changes, target);
+  if (canonical([...required].sort()) !== canonical([...proposal.replacedHoleIds].sort())) throw Error("Unconfirmed mapping replacement.");
+  const merged = mergeAssignments(baseline, proposal.changes, target);
   if (new Set(proposal.assignments.map(a => a.holeId)).size !== proposal.assignments.length || canonical(merged) !== canonical(proposal.assignments)) throw Error("Incomplete parameter proposal.");
 }
 

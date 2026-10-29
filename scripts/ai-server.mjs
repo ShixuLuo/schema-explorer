@@ -18,10 +18,11 @@ export const AI_REQUEST_TIMEOUT_MS = 300000;
 export const AI_REQUEST_MAX_BYTES = 256 * 1024;
 export function aiTiming(traceId, stage, event, fields = {}) {
   const safe = { trace: /^[a-f0-9-]{36}$/i.test(traceId ?? "") ? traceId : "local", stage, event };
-  for (const key of ["elapsedMs", "attempt", "attempts", "httpStatus"]) if (typeof fields[key] === "number" && Number.isFinite(fields[key])) safe[key] = Math.round(fields[key]);
+  for (const key of ["elapsedMs", "attempt", "attempts", "httpStatus", "inputTokens", "outputTokens"]) if (typeof fields[key] === "number" && Number.isFinite(fields[key])) safe[key] = Math.round(fields[key]);
   for (const key of ["aborted", "outerAborted", "localDeadlineAborted"]) if (typeof fields[key] === "boolean") safe[key] = fields[key];
   if (["schema-suggestions", "migration-parameters"].includes(fields.operation)) safe.operation = fields.operation;
   for (const key of ["status", "outcome"]) if (["completed", "incomplete", "failed", "cancelled", "in_progress", "queued", "valid", "invalid", "needs-input", "unknown", "error", "aborted", "http-error", "network-error", "decode-error"].includes(fields[key])) safe[key] = fields[key];
+  if (["max_output_tokens", "content_filter"].includes(fields.incompleteReason)) safe.incompleteReason = fields.incompleteReason;
   if (["none", "request-deadline", "client-disconnected"].includes(fields.abortSource)) safe.abortSource = fields.abortSource;
   console.info("[ai-timing]", JSON.stringify(safe));
 }
@@ -232,7 +233,7 @@ export async function generateStructured(payload, {signal, fetchImpl = fetch, ke
     throw fail("Server API key file permissions must be 0600.", 503);
   const key = (await readFile(keyPath, "utf8")).trim();
   if (!key) throw fail("Server API key is unavailable.", 503);
-  let response, outcome = "error", modelStatus = "unknown";
+  let response, outcome = "error", modelStatus = "unknown", incompleteReason, inputTokens, outputTokens;
   const started = performance.now();
   aiTiming(traceId,"model_request","start",{operation,attempt});
   try {
@@ -266,10 +267,10 @@ export async function generateStructured(payload, {signal, fetchImpl = fetch, ke
   }
   outcome = "decode-error";
   const body = await response.json();
-  outcome = "completed"; modelStatus = body.status;
+  outcome = "completed"; modelStatus = body.status; incompleteReason = body.incomplete_details?.reason; inputTokens = body.usage?.input_tokens; outputTokens = body.usage?.output_tokens;
   return body;
   } finally {
-    aiTiming(traceId,"model_request","end",{operation,attempt,elapsedMs:performance.now()-started,httpStatus:response?.status,status:modelStatus,outcome,aborted:!!signal?.aborted});
+    aiTiming(traceId,"model_request","end",{operation,attempt,elapsedMs:performance.now()-started,httpStatus:response?.status,status:modelStatus,incompleteReason,inputTokens,outputTokens,outcome,aborted:!!signal?.aborted});
   }
 }
 export function createAiServer({ generateImpl = generate, migrationGenerateImpl } = {}) {

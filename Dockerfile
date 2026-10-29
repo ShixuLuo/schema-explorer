@@ -19,7 +19,8 @@ WORKDIR /build
 RUN curl -fL --retry 3 https://github.com/CategoricalData/CQL/releases/download/20261024/cql.jar -o cql.jar \
  && echo 'e2c9c14db1acf31dfbcf51c5cedab1bc2228a9688ddc0efb74a3a3f68b5b0079  cql.jar' | sha256sum -c -
 COPY backend/java/*.java ./
-RUN mkdir classes && javac --release 21 -cp cql.jar -d classes SchemaCompiler.java QueryCompiler.java CqlWorker.java DataEvaluator.java SealedPlanRegistry.java SealedPlanRunner.java
+COPY backend/java/vendor/cql ./vendor/cql
+RUN mkdir classes && javac --release 21 -cp cql.jar -d classes vendor/cql/TalgSimplifier.java IndexedEvalInstance.java PopulationCompiler.java ScalarFunctions.java SchemaCompiler.java QueryCompiler.java CqlWorker.java DataEvaluator.java SealedPlanRegistry.java SealedPlanRunner.java
 
 FROM eclipse-temurin:21-jre-jammy AS jre
 FROM node:22-bookworm-slim
@@ -31,6 +32,7 @@ COPY --from=web /build/dist ./dist
 COPY --from=rust /build/backend/rust/target/release/cql-http ./bin/cql-http
 COPY --from=cql /build/cql.jar ./lib/cql.jar
 COPY --from=cql /build/classes ./backend/java/build
+COPY backend/java/vendor/cql/NOTICE.md backend/java/vendor/cql/BSD-3-Clause.txt ./licenses/cql/
 COPY backend/java/recipes ./backend/java/recipes
 COPY frontend/src ./frontend/src
 COPY scripts ./scripts

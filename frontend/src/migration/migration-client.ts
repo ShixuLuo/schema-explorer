@@ -1,17 +1,7 @@
 import type { SchemaSpec } from "../model/operations.ts";
-export type Term = {
-  tag: "raw_term";
-  annotation: null;
-  head: string;
-  arguments: Term[];
-};
-export type Binding = { variable: string; entity: string };
-export type AssignmentValue = {
-  bindings?: (Binding | { targetVariable: string; term: Term })[];
-  term?: Term;
-  equations?: { left: Term; right: Term }[];
-};
-export type Assignment = { holeId: string; value: AssignmentValue };
+import { conversionTargets, mappingIds, type Term, type Binding, type Assignment, type AssignmentValue } from "./assignment-contract.ts";
+export type { Term, Binding, Assignment, AssignmentValue, Population, PopulationBranch } from "./assignment-contract.ts";
+export { populationValue } from "./assignment-contract.ts";
 export type Hole = {
   holeId: string;
   kind: string;
@@ -98,6 +88,24 @@ export function pathOptions(
   return options;
 }
 
+export function scalarOptions(source: SchemaSpec, bindings: Binding[], expected?: string) {
+  const paths = pathOptions(source, bindings, true);
+  if (!expected) return paths;
+  const direct = paths.filter(p => p.dataType === expected);
+  const converted = paths.filter(p => p.dataType && conversionTargets[p.dataType]?.includes(expected)).map(p => ({
+    ...p, label: `${expected}(${p.label})`, dataType: expected,
+    term: { ...variableTerm(`cast:${expected}`), arguments: [p.term] },
+  }));
+  return [...direct, ...converted];
+}
+export function termDescription(source: SchemaSpec, bindings: Binding[], term: Term): string {
+  if (!term.arguments.length) return source.tables.find(t => t.id === bindings.find(b => b.variable === term.head)?.entity)?.name ?? term.head;
+  const argument = termDescription(source, bindings, term.arguments[0]);
+  if (term.head.startsWith("cast:")) return `${term.head.slice(5)}(${argument})`;
+  const field = source.tables.flatMap(t => t.columns).find(c => c.id === term.head)?.name ?? source.foreign_keys.find(f => f.id === term.head)?.name ?? term.head;
+  return `${argument}.${field}`;
+}
+
 export const scalarType = (type: string) =>
   (
     ({
@@ -120,6 +128,7 @@ export function updateAssignment(
 ): Assignment[] {
   const table = target.tables.find((t) => `${t.id}.from` === holeId);
   const stale = new Set<string>([holeId]);
+  for (const entity of target.tables) if (mappingIds(target, entity.id).includes(holeId)) stale.add(`${entity.id}.population`);
   if (table) {
     stale.add(`${table.id}.where`);
     for (const c of table.columns) stale.add(`${table.id}.attribute.${c.id}`);

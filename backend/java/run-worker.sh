@@ -13,5 +13,5 @@ else
 fi
 BUILD=${CQL_JAVA_BUILD_DIR:-$HERE/build}
 mkdir -p "$BUILD"
-"$JAVAC" -cp "$CQL_JAR" -d "$BUILD" "$HERE/SchemaCompiler.java" "$HERE/QueryCompiler.java" "$HERE/CqlWorker.java" "$HERE/DataEvaluator.java" "$HERE/SealedPlanRegistry.java" "$HERE/SealedPlanRunner.java"
+"$JAVAC" -cp "$CQL_JAR" -d "$BUILD" "$HERE/vendor/cql/TalgSimplifier.java" "$HERE/IndexedEvalInstance.java" "$HERE/PopulationCompiler.java" "$HERE/ScalarFunctions.java" "$HERE/SchemaCompiler.java" "$HERE/QueryCompiler.java" "$HERE/CqlWorker.java" "$HERE/DataEvaluator.java" "$HERE/SealedPlanRegistry.java" "$HERE/SealedPlanRunner.java"
 exec "$JAVA" -Dcql.recipe.dir="$HERE/recipes" -Djava.awt.headless=true -Dpolyglot.engine.WarnInterpreterOnly=false -cp "$BUILD:$CQL_JAR" CqlWorker

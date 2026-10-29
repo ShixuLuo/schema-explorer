@@ -40,7 +40,7 @@ Run/apply is bound to the source revision, schemas, and data/result hashes. Stag
 
 ## AI
 
-Schema and migration AI metadata requests share a **256 KiB UTF-8 request cap** (`AI_REQUEST_MAX_BYTES`). This changes only the request-body allowance; sample limits and model output budgets are unchanged.
+Schema and migration AI metadata requests share a **256 KiB UTF-8 request cap** (`AI_REQUEST_MAX_BYTES`). Source sample limits remain bounded independently. Schema suggestions allow 8,000 output tokens; migration parameters allow 16,000 for multi-branch plans.
 
 AI requests have a **five-minute total deadline**. Migration parameter generation, its one bounded repair, and CQL validation share that budget; CQL validator/execution limits remain separate. Server `[ai-timing]` lines use an internal trace ID and log only phase timing/status, attempt counts, and cancellation source—never prompts, payloads, samples, or credentials.
 
@@ -58,9 +58,11 @@ History retains checkpoint parents and the current Editing checkpoint. Restoring
 
 Models, checkpoints, and immutable row chunks are stored locally in IndexedDB. Preview SQL uses PGlite in a browser worker. Uploaded data does not become a shared cloud database. AI receives only the bounded context described above; CQL receives the source snapshot needed for an explicitly requested migration.
 
-Generic UI migrations currently support source bindings, unary value/reference paths, and equality conditions. The current parameter contract does not yet express Text-to-numeric conversions or union/deduplication for populating normalized entities. Structural edits can describe those target schemas, but their data migrations remain unsupported until these general operators are added. This is a limitation of the application contract, not the full CQL language.
+Generic UI migrations support source bindings, unary value/reference paths, equality conditions, exact registered scalar conversions, and branch unions with explicit key deduplication for normalized entities. Population plans compile to CQL extraction, collection, and quotient operations. Conflicting attributes or references for the same key fail; full source/target equations are checked during execution. Arbitrary functions, aggregation, constants, and null semantics remain unsupported. These operators have been checked with small independent datasets; this does not guarantee a complete migration for every AI-generated target.
 
-The Rust HTTP service supervises a Java worker using the official CQL parser/evaluator. Generic native-schema query runs and separately configured example plans share that boundary. See [CQL contract and limitations](backend/java/README.md). In-memory backend run results do not survive a service restart; applied browser checkpoints do.
+The deployed UI verification on October 29 used the original DB1B data and AI-generated parameters. Type conversion completed in 24 seconds; the next migration combined conversions with five-source airport/state populations in 31 seconds, producing 500 / 821 / 1,178 / 182 / 49 rows. An independent comparison checked every output scalar and reference. The AI-proposed schema still retains generated identities and some redundant columns/direct references; it is not an exact column-for-column copy of the article.
+
+The Rust HTTP service supervises a Java worker using the pinned CQL parser/evaluator with documented performance adapters and a small [version-pinned substitution patch](backend/java/vendor/cql/NOTICE.md). Generic native-schema query runs and separately configured example plans share that boundary. See [CQL contract and limitations](backend/java/README.md). In-memory backend run results do not survive a service restart; applied browser checkpoints do.
 
 ## Development checks
 

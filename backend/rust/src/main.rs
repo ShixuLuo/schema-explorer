@@ -16,8 +16,21 @@ impl Worker {
   let input=child.stdin.take().ok_or(())?; let out=child.stdout.take().ok_or(())?; let err=child.stderr.take().ok_or(())?;
   let(tx,output)=mpsc::sync_channel(1);
   std::thread::spawn(move|| { let mut r=BufReader::new(out); loop {let mut bytes=Vec::new(); let n=r.by_ref().take((MAX_LINE+1) as u64).read_until(b'\n',&mut bytes); if n.is_err()||bytes.is_empty()||bytes.len()>MAX_LINE||!bytes.ends_with(b"\n") {let _=tx.send(Err(()));break} if tx.send(String::from_utf8(bytes).map_err(|_|())).is_err(){break} } });
-  // Drain stderr without retaining or returning potentially sensitive engine details.
-  std::thread::spawn(move|| {let mut r=err; let mut b=[0u8;4096]; while let Ok(n)=r.read(&mut b){if n==0{break}}});
+  // Forward only compiler-owned phase names and numeric durations. Discard raw engine details.
+  std::thread::spawn(move|| {
+   let mut r=BufReader::new(err);
+   loop {
+    let mut bytes=Vec::new();let Ok(n)=r.by_ref().take(4097).read_until(b'\n',&mut bytes) else{break};
+    if n==0{break} if bytes.len()>4096||!bytes.ends_with(b"\n"){continue}
+    let Ok(line)=std::str::from_utf8(&bytes) else{continue};let Some(body)=line.strip_prefix("[cql-stage] ") else{continue};
+    let Ok(value)=serde_json::from_str::<Value>(body) else{continue};
+    let Some(stage)=value["stage"].as_str() else{continue};let Some(event)=value["event"].as_str() else{continue};
+    let known=matches!(stage,"Parse"|"Ty"|"S"|"T"|"O"|"Q"|"Collect"|"Input"|"Occurrences"|"Collected"|"Result")||["SourceRule","TargetRule"].iter().any(|p|stage.strip_prefix(p).is_some_and(|v|v.strip_suffix("Check").unwrap_or(v).chars().all(|c|c.is_ascii_digit())));
+    if !known||!matches!(event,"start"|"end"){continue}
+    if event=="start"{eprintln!("[cql-stage] {}",json!({"stage":stage,"event":event}));}
+    else if let Some(ms)=value["elapsedMs"].as_f64().filter(|ms|ms.is_finite()&&*ms>=0.0){eprintln!("[cql-stage] {}",json!({"stage":stage,"event":event,"elapsedMs":ms}));}
+   }
+  });
   LIVE_WORKER_PGID.store(child.id() as i32,Ordering::SeqCst); Ok(Self{child,input:Some(input),output})
  }
  fn call(&mut self, v:&Value, timeout:u64)->Result<Value,&'static str>{
