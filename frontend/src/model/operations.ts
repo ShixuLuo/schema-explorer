@@ -4,7 +4,8 @@ export type { ColumnSpec, ForeignKeySpec, TableSpec } from "./schema.ts";
 
 // The recorded elementary operations used by preview, history and SQL export.
 export type TypedCell =
-  { type: "null" } | { type: "text" | "integer"; value: string };
+  | { type: "null" }
+  | { type: "text" | "integer" | "real" | "boolean"; value: string };
 export type AttributeParameters =
   | { template: "extension"; method?: "sigma" | "pi" | null }
   | { template: "constant"; value?: TypedCell }

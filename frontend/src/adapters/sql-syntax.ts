@@ -1,3 +1,4 @@
+import { validScalar } from "../model/scalar.ts";
 import type { TypedCell, ColumnSpec, TableSpec } from "../model/operations.ts";
 export function ident(value: string) {
   if (
@@ -12,6 +13,10 @@ export function ident(value: string) {
 }
 export function literal(cell: TypedCell): string {
   if (cell.type === "null") return "NULL";
+  if (!validScalar(cell.type, cell.value))
+    throw new Error("Invalid " + cell.type + " scalar value.");
+  if (cell.type === "real") return `${cell.value}::NUMERIC`;
+  if (cell.type === "boolean") return cell.value === "true" ? "TRUE" : "FALSE";
   if (cell.type === "integer") {
     if (!/^[+-]?[0-9]+$/.test(cell.value))
       throw new Error("Expected a signed integer.");
@@ -25,7 +30,9 @@ export function literal(cell: TypedCell): string {
   return `E'${cell.value.replaceAll("\\", "\\\\").replaceAll("'", "''")}'`;
 }
 export const sqlType = (column: ColumnSpec) =>
-  column.dataType === "integer" ? "BIGINT" : "TEXT";
+  ({ integer: "BIGINT", text: "TEXT", real: "NUMERIC", boolean: "BOOLEAN" })[
+    column.dataType
+  ];
 export function sqlName(prefix: string, id: string) {
   let hash = 0xcbf29ce484222325n;
   for (const byte of new TextEncoder().encode(id))

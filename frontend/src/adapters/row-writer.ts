@@ -1,3 +1,4 @@
+import { validScalar } from "../model/scalar.ts";
 import type { CellValue, Table } from "../model/schema.ts";
 import type { RowWriter } from "../application/ports.ts";
 import { LIMITS } from "../application/limits.ts";
@@ -43,6 +44,19 @@ export function rowWriter(table: Table, sink: Sink): RowWriter {
             throw new Error(
               "A table supports at most 50,000 rows and 200,000 cells.",
             );
+          row.forEach((value, i) => {
+            const column = table.columns[i];
+            if (
+              value !== null &&
+              (typeof value !== "string" ||
+                !validScalar(column.dataType ?? "text", value))
+            )
+              throw new Error(
+                `Invalid ${column.dataType ?? "text"} value in ${column.name}.`,
+              );
+            if (value === null && column.nullable === false)
+              throw new Error(`Required value in ${column.name}.`);
+          });
           const bytes = row.reduce((n, value) => {
             const size = value === null ? 0 : encoder.encode(value).length;
             if (size > LIMITS.cellBytes)

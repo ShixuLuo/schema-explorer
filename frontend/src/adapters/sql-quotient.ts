@@ -1,3 +1,4 @@
+import type { DataType } from "../model/schema.ts";
 import { quotientIssue } from "../model/migration-options.ts";
 import { ReadableFailure } from "../model/failure.ts";
 import type { SchemaSpec } from "../model/operations.ts";
@@ -71,7 +72,7 @@ export function quotientSql(schema: SchemaSpec, token: string): string[] {
           p.constant.value === null
             ? { type: "null" }
             : {
-                type: p.constant.sort === "type:integer" ? "integer" : "text",
+                type: p.constant.sort.slice(5) as DataType,
                 value: p.constant.value,
               },
         ),

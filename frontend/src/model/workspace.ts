@@ -37,7 +37,21 @@ export type CheckpointInfo = {
   operationCount?: number;
   tags?: string[];
 };
+export type CqlProvenance = {
+  kind: "cql-result-import";
+  scope: string;
+  resultId: string;
+  binding: unknown;
+  contract?: unknown;
+  targetHash?: string;
+  resultDigest?: string;
+  sourceDigest?: string;
+  manifest?: unknown;
+  programHash?: unknown;
+  equations: "none imported; external contract only";
+};
 export type Checkpoint = CheckpointInfo & {
+  provenance?: CqlProvenance;
   state: SavedWorkspace;
   operations?: Operation[];
   // Preserved audit data from the old flat log; new commits do not create it.

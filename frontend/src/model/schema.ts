@@ -1,4 +1,4 @@
-export type DataType = "text" | "integer";
+export type DataType = "text" | "integer" | "real" | "boolean";
 export type CellValue = string | null;
 export type ColumnSpec = {
   id: string;

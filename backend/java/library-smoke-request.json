@@ -1,0 +1,246 @@
+{
+  "op": "evaluate_recipe",
+  "payload": {
+    "recipeId": "library.factor_entities.v1",
+    "source": {
+      "tables": [
+        {
+          "id": "transactions",
+          "name": "transactions",
+          "columns": [
+            {
+              "id": "id",
+              "name": "id",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "member",
+              "name": "member",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "memberName",
+              "name": "memberName",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "branch",
+              "name": "branch",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "branchName",
+              "name": "branchName",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "total",
+              "name": "total",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "enabled",
+              "name": "enabled",
+              "dataType": "text",
+              "nullable": false
+            }
+          ],
+          "primaryKey": [
+            "id"
+          ]
+        }
+      ],
+      "foreign_keys": [],
+      "equations": []
+    },
+    "target": {
+      "tables": [
+        {
+          "id": "loans",
+          "name": "loans",
+          "columns": [
+            {
+              "id": "id",
+              "name": "id",
+              "dataType": "text",
+              "nullable": false,
+              "storage": "identity"
+            },
+            {
+              "id": "memberCode",
+              "name": "memberCode",
+              "dataType": "text",
+              "nullable": false
+            },
+            {
+              "id": "total",
+              "name": "total",
+              "dataType": "real",
+              "nullable": false
+            },
+            {
+              "id": "enabled",
+              "name": "enabled",
+              "dataType": "boolean",
+              "nullable": false
+            },
+            {
+              "id": "branchRef",
+              "name": "branchRef",
+              "dataType": "text",
+              "nullable": false,
+              "storage": "reference"
+            }
+          ],
+          "primaryKey": [
+            "id"
+          ]
+        },
+        {
+          "id": "members",
+          "name": "members",
+          "columns": [
+            {
+              "id": "code",
+              "name": "code",
+              "dataType": "text",
+              "nullable": false,
+              "storage": "identity"
+            },
+            {
+              "id": "label",
+              "name": "label",
+              "dataType": "text",
+              "nullable": false
+            }
+          ],
+          "primaryKey": [
+            "code"
+          ]
+        },
+        {
+          "id": "branches",
+          "name": "branches",
+          "columns": [
+            {
+              "id": "code",
+              "name": "code",
+              "dataType": "text",
+              "nullable": false,
+              "storage": "identity"
+            },
+            {
+              "id": "label",
+              "name": "label",
+              "dataType": "text",
+              "nullable": false
+            }
+          ],
+          "primaryKey": [
+            "code"
+          ]
+        }
+      ],
+      "foreign_keys": [
+        {
+          "id": "borrower",
+          "name": "borrower",
+          "source_table": "loans",
+          "source_columns": [
+            "memberCode"
+          ],
+          "target_table": "members",
+          "target_columns": [
+            "code"
+          ]
+        },
+        {
+          "id": "office",
+          "name": "office",
+          "source_table": "loans",
+          "source_columns": [
+            "branchRef"
+          ],
+          "target_table": "branches",
+          "target_columns": [
+            "code"
+          ]
+        }
+      ],
+      "equations": []
+    },
+    "bindings": {
+      "sourceEntities": {
+        "Entry": "transactions"
+      },
+      "sourceAttributes": {
+        "raw_id": "id",
+        "raw_member": "member",
+        "raw_member_name": "memberName",
+        "raw_branch": "branch",
+        "raw_branch_name": "branchName",
+        "raw_amount": "total",
+        "raw_active": "enabled"
+      },
+      "sourceForeignKeys": {},
+      "targetEntities": {
+        "Loan": "loans",
+        "Member": "members",
+        "Branch": "branches"
+      },
+      "targetAttributes": {
+        "loan_id": "id",
+        "loan_member_code": "memberCode",
+        "amount": "total",
+        "active": "enabled",
+        "member_code": "code",
+        "member_name": "label",
+        "branch_code": "code",
+        "branch_name": "label"
+      },
+      "targetForeignKeys": {
+        "loan_member": "borrower",
+        "loan_branch": "office"
+      }
+    },
+    "data": {
+      "tables": {
+        "transactions": [
+          {
+            "id": "L1",
+            "member": "M1",
+            "memberName": "Ada",
+            "branch": "B1",
+            "branchName": "West",
+            "total": "1.25",
+            "enabled": "1"
+          },
+          {
+            "id": "L2",
+            "member": "M1",
+            "memberName": "Ada",
+            "branch": "B2",
+            "branchName": "East",
+            "total": "2.50",
+            "enabled": "0"
+          },
+          {
+            "id": "L3",
+            "member": "M2",
+            "memberName": "Lin",
+            "branch": "B1",
+            "branchName": "West",
+            "total": "3.75",
+            "enabled": "1"
+          }
+        ]
+      }
+    }
+  }
+}

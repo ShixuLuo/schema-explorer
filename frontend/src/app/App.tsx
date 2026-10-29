@@ -1,3 +1,4 @@
+import CqlExperiment from "./CqlExperiment.tsx";
 import { readCsvHeaders } from "./runtime.ts";
 import type { CsvInput } from "../application/ports.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,6 +37,7 @@ import Icon from "../shared/Icon";
 import { createEditorSession, history, loadSql, workspace } from "./runtime.ts";
 import { runDataTask } from "./worker-client.ts";
 export default function App() {
+  const [cqlOpen, setCqlOpen] = useState(false);
   const [cases, setCases] = useState<CaseInfo[]>([]);
   const [useCase, setCase] = useState<UseCase | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -444,6 +446,13 @@ export default function App() {
       }}
       onDrop={drop}
     >
+      <CqlExperiment
+        hidden={!cqlOpen}
+        onClose={() => setCqlOpen(false)}
+        activeCaseId={useCase?.id ?? null}
+        load={load}
+        disabled={!!busy || !!draft || !!edit}
+      />
       {!useCase ? (
         <main className="landing">
           <div className="landing-content">
@@ -545,6 +554,13 @@ export default function App() {
                   <span className="schema-only-badge">Schema only</span>
                 )}
               <div className="toolbar-spacer" />
+              <button
+                className="toolbar-button"
+                disabled={!!busy || workspaceLocked}
+                onClick={() => setCqlOpen((value) => !value)}
+              >
+                CQL
+              </button>
               <button
                 className="toolbar-button history-control"
                 aria-label="Open history"

@@ -1,0 +1,24 @@
+import java.util.*;import org.json.*;import catdata.cql.*;import catdata.cql.exp.*;
+/** Small scalar query and recipe-binding preflight; no Evan dataset evaluation. */
+public final class KeyTransportSmoke {
+ static JSONObject schema(String type,boolean hidden,boolean generated){JSONObject col=new JSONObject().put("id","key").put("name","arbitrary").put("dataType",type).put("nullable",false);if(hidden)col.put("storage","identity");if(generated)col.put("generated","identity");return new JSONObject().put("tables",new JSONArray().put(new JSONObject().put("id","E").put("name","E").put("columns",new JSONArray().put(col)).put("primaryKey",new JSONArray().put("key")))).put("foreign_keys",new JSONArray()).put("equations",new JSONArray());}
+ static JSONObject term(String head,JSONObject... args){return new JSONObject().put("tag","raw_term").put("head",head).put("arguments",new JSONArray(Arrays.asList(args))).put("annotation",JSONObject.NULL);}
+ static void check(String type,String value)throws Exception{
+  SchemaCompiler s=new SchemaCompiler(schema(type,false,false),"S"),plain=new SchemaCompiler(schema(type,false,false),"T"),hidden=new SchemaCompiler(schema(type,true,false),"T");
+  if(hidden.columns.get("E").containsKey("key"))throw new AssertionError("hidden key exposed as generic attribute");
+  JSONArray assignments=new JSONArray().put(new JSONObject().put("holeId","E.from").put("value",new JSONObject().put("bindings",new JSONArray().put(new JSONObject().put("variable","x").put("entity","E"))))).put(new JSONObject().put("holeId","E.attribute.key").put("value",new JSONObject().put("term",term("key",term("x")))));
+  JSONObject data=new JSONObject().put("tables",new JSONObject().put("E",new JSONArray().put(new JSONObject().put("key",value))));
+  DataEvaluator d=new DataEvaluator(s,plain,data);String program=SchemaCompiler.TYPES+s.program()+plain.program()+new QueryCompiler(s,plain,assignments).program()+d.instance();program=program.replaceAll("\\bText\\b","String").replaceAll("\\bInteger\\b","Int").replaceAll("\\bexactReal\\b","Real");AqlEnv env=DataEvaluator.evaluate(program);
+  JSONObject bindings=new JSONObject().put("targetEntities",new JSONObject().put(plain.entity("E"),"E")).put("targetAttributes",new JSONObject().put(plain.column("E","key"),"key")).put("targetForeignKeys",new JSONObject());
+  SealedPlanRunner.bind(hidden,(Schema)env.get(Kind.SCHEMA,"T"),bindings,"target");
+  JSONObject row=new DataEvaluator(s,hidden,data).result((Instance)env.get(Kind.INSTANCE,"Result")).getJSONArray("E").getJSONObject(0);
+  if(!row.getJSONObject("values").getString("key").equals(value))throw new AssertionError(row);
+  try{DataEvaluator.requireTargetKeyTransport(new SchemaCompiler(schema(type,true,false),"T"));throw new AssertionError("missing key accepted");}catch(UnsupportedOperationException expected){}
+  DataEvaluator.requireTargetKeyTransport(new SchemaCompiler(schema(type,true,true),"T"));
+ }
+ static void preflight()throws Exception{JSONObject p=new JSONObject(java.nio.file.Files.readString(java.nio.file.Path.of("evan-smoke-request.json"))).getJSONObject("payload");JSONObject target=p.getJSONObject("target"),bindings=p.getJSONObject("bindings");Map<String,String> roles=Map.of("Ticket","Ticket_ItinID","Market","Market_MktID","Airport","Airport_AirportSeqID","State","State_Fips");for(Object o:target.getJSONArray("tables")){JSONObject table=(JSONObject)o;String role=roles.get(table.getString("id"));if(role==null)continue;String key=bindings.getJSONObject("targetAttributes").getString(role);table.put("primaryKey",new JSONArray().put(key));JSONArray cols=new JSONArray();for(Object c:table.getJSONArray("columns")){JSONObject col=(JSONObject)c;if(col.has("generated"))continue;if(col.getString("id").equals(key))col.put("storage","identity");cols.put(col);}table.put("columns",cols);}SchemaCompiler t=new SchemaCompiler(target,"T");AqlEnv env=SealedPlanRunner.evaluate(SealedPlanRegistry.asset("evan-posttype-prefix.cql"),new JSONArray());SealedPlanRunner.bind(t,(Schema)env.get(Kind.SCHEMA,"TypedTarget"),bindings,"target");DataEvaluator.requireTargetKeyTransport(t);
+  JSONObject plan=SealedPlanRegistry.plan(p.getString("recipeId"));JSONObject first=plan.getJSONArray("stages").getJSONObject(0),second=plan.getJSONArray("stages").getJSONObject(1);
+  String tail=SealedPlanRegistry.asset(first.getString("tail"));AqlEnv schemas=SealedPlanRunner.evaluate(SealedPlanRegistry.asset(first.getString("prefix"))+tail.substring(0,tail.indexOf("query Extract")),new JSONArray());
+  SealedPlanRunner.validateBridge((Schema)schemas.get(Kind.SCHEMA,"N"),(Schema)env.get(Kind.SCHEMA,second.getString("inputSchema")),second.getJSONObject("bridge"));}
+ public static void main(String[] args)throws Exception{preflight();check("text","0012");check("integer","9223372036854775807");System.out.println("key transport smoke passed: hidden recipe keys, Text 0012, Int64 maximum, generic rejection, generated compatibility");}
+}

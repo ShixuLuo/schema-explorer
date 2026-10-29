@@ -1,0 +1,37 @@
+.cql-panel {
+  padding: 14px 18px;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #e2e5e9);
+  font-size: 13px;
+}
+.cql-panel[hidden] {
+  display: none;
+}
+.cql-panel-heading,
+.cql-panel-heading > div,
+.cql-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cql-panel-heading {
+  justify-content: space-between;
+}
+.cql-panel-label {
+  color: #697386;
+  font-size: 12px;
+}
+.cql-panel p {
+  margin: 8px 0;
+  max-width: 85ch;
+}
+.cql-panel-actions {
+  flex-wrap: wrap;
+}
+.cql-panel-counts {
+  font-variant-numeric: tabular-nums;
+}
+.cql-panel p:last-child {
+  margin-bottom: 0;
+  color: #596273;
+}

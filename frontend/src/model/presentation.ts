@@ -1,3 +1,4 @@
+import { isDataType, validScalar } from "./scalar.ts";
 // Category presentations and their edits. This module has no database,
 // storage, rendering, or instance-data dependency.
 export type ObjectDef = { id: string; label: string; kind: "entity" | "type" };
@@ -80,6 +81,15 @@ export function endpoint(presentation: Presentation, path: Path): string {
         BigInt(path.constant.value) >= 1n << 63n)
     )
       throw new Error("The integer constant is outside its scalar domain.");
+    if (
+      path.constant.value !== null &&
+      isDataType(sort.id.slice(5)) &&
+      !validScalar(
+        sort.id.slice(5) as import("./schema.ts").DataType,
+        path.constant.value,
+      )
+    )
+      throw new Error("Constant is outside its scalar domain.");
     return sort.id;
   }
   return current;

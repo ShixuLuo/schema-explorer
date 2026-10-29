@@ -47,7 +47,14 @@ export async function exportSql(
   const recorded = path?.every((c) => c.operations !== undefined);
   let migration: string | null = null,
     reason: string | undefined;
-  if (path && recorded) {
+  if (
+    from?.provenance?.kind === "cql-result-import" ||
+    to.provenance?.kind === "cql-result-import" ||
+    path?.some((c) => c.provenance?.kind === "cql-result-import")
+  ) {
+    reason =
+      "CQL result import has no recorded native SQL migration. SQL export for this range is unsupported.";
+  } else if (path && recorded) {
     const bundle = await engine.sql(
       base,
       path.flatMap((c) => c.operations!),

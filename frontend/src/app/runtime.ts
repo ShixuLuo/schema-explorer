@@ -68,3 +68,71 @@ export const history = {
   compare: (id: string, checkpointId: string) =>
     compareCheckpoint(store, id, checkpointId),
 };
+
+import {
+  applySubset,
+  freezeBinding,
+  type Contract,
+  type Result,
+  type FrozenBinding,
+} from "../application/cql-subset.ts";
+export const cqlExperiment = {
+  async start(contract: Contract) {
+    const c = await createUseCase(store);
+    await store.patchInfo(c.id, {
+      name: contract.metadata?.title ?? "CQL result import experiment",
+    });
+    const binding = freezeBinding(contract, c.id);
+    await store.commit(c.id, 0, {
+      kind: "checkpoint",
+      state: {
+        tables: binding.tables,
+        relationships: binding.relationships,
+        equations: [],
+      },
+      operations: [],
+      description: "Prepared target schema (empty tables)",
+    });
+    return { caseId: c.id, binding, revision: 1 };
+  },
+  apply: (
+    caseId: string,
+    revision: number,
+    contract: Contract,
+    result: Result,
+    binding: FrozenBinding,
+  ) => applySubset(store, caseId, revision, contract, result, binding),
+};
+
+import {
+  prepareSource,
+  runRecipe,
+  applyLive,
+  type SourceFixture,
+  type RecipeBindings,
+  type LiveResult,
+} from "../application/cql-live.ts";
+export const cqlLive = {
+  prepareSource: (fixture: SourceFixture) => prepareSource(store, fixture),
+  run: (
+    targetCaseId: string,
+    sourceCaseId: string,
+    sourceBindings: RecipeBindings,
+    binding: FrozenBinding,
+    onStatus: (s: string) => void,
+    signal: AbortSignal,
+    recipeId: string,
+  ) =>
+    runRecipe(
+      store,
+      targetCaseId,
+      sourceCaseId,
+      sourceBindings,
+      binding,
+      onStatus,
+      signal,
+      recipeId,
+    ),
+  apply: (caseId: string, result: LiveResult, contract: Contract) =>
+    applyLive(store, caseId, result, contract),
+};

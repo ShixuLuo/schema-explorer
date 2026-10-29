@@ -1,3 +1,4 @@
+import { isDataType } from "./scalar.ts";
 import {
   attributeId,
   databasePresentation,
@@ -57,6 +58,8 @@ export function validateBindings(schema: SchemaSpec) {
         fields.has(attribute.name)
       )
         throw new Error("Field names and IDs must be unique.");
+      if (!isDataType(attribute.dataType))
+        throw new Error("Unknown scalar field type.");
       if (
         attribute.generated &&
         (attribute.generated !== "identity" ||
@@ -79,8 +82,11 @@ export function validateBindings(schema: SchemaSpec) {
           throw new Error("Referenced unique keys must be non-nullable.");
     }
     for (const id of object.primaryKey)
-      if (attributeBinding(object, id).nullable)
-        throw new Error("Identity fields must be non-nullable.");
+      if (
+        attributeBinding(object, id).nullable ||
+        !["text", "integer"].includes(attributeBinding(object, id).dataType)
+      )
+        throw new Error("Identity fields must be non-null Text or Integer.");
   }
   for (const arrow of schema.foreign_keys) {
     if (!arrow.id || arrowIds.has(arrow.id))

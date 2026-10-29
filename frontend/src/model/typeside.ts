@@ -6,5 +6,7 @@ export const SQL_TYPESIDE: TypeSide = {
   sorts: [
     { id: "type:text", carrier: "sql-text", nullable: true },
     { id: "type:integer", carrier: "signed-int64", nullable: true },
+    { id: "type:real", carrier: "exact-decimal", nullable: true },
+    { id: "type:boolean", carrier: "boolean", nullable: true },
   ],
 };

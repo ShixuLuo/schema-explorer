@@ -9,7 +9,8 @@ export type ModelPublication =
   | {
       kind: "checkpoint";
       state: ModelContent;
-      operations: Operation[];
+      operations?: Operation[];
+      provenance?: import("./workspace.ts").CqlProvenance;
       description: string;
       undoable?: boolean;
     }
@@ -38,6 +39,8 @@ export function publishModel(
   let checkpoints = current.history.checkpoints,
     editing = current.history.editing;
   if (publication.kind === "checkpoint") {
+    if (!publication.operations && !publication.provenance)
+      throw new Error("Checkpoint needs operations or provenance.");
     state = structuredClone(publication.state);
     const checkpoint = {
       id: crypto.randomUUID(),
@@ -47,8 +50,15 @@ export function publishModel(
           : publication.description,
       createdAt: Date.now(),
       parentId: editing,
-      operations: structuredClone(publication.operations),
-      operationCount: publication.operations.length,
+      ...(publication.operations
+        ? {
+            operations: structuredClone(publication.operations),
+            operationCount: publication.operations.length,
+          }
+        : {}),
+      ...(publication.provenance
+        ? { provenance: structuredClone(publication.provenance) }
+        : {}),
       state: structuredClone({
         ...state,
         positions: current.positions,
