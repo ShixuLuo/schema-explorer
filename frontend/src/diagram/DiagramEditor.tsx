@@ -1,93 +1,97 @@
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import {
   Background,
   BackgroundVariant,
   ConnectionMode,
   ReactFlow,
+  ReactFlowProvider,
   useNodesInitialized,
   useNodesState,
   useReactFlow,
   useViewport,
-  type Connection,
   type Edge,
   type Viewport,
 } from "@xyflow/react";
-import { canBeInteger, typeHintId } from "../model/profile.ts";
-import type { Relation, Table } from "../model/schema.ts";
-import type { UseCase } from "../model/workspace.ts";
-import type { Selection } from "./types.ts";
-import TableNode, { type TableFlowNode } from "./TableNode";
-import RelationshipEdge from "./RelationshipEdge";
-import DetailsPopover from "./DetailsPopover.tsx";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { comparisonView } from "../model/comparison.ts";
+import { databasePresentation } from "../model/database-presentation.ts";
+import { pathLabel } from "../model/presentation.ts";
+import { schemaSpec } from "../model/wire.ts";
 import Icon from "../shared/Icon";
-import type { EditTarget } from "../application/intents.ts";
-import { routeRelationships } from "./relationship-routing";
+import CategoryDiagram from "./CategoryDiagram.tsx";
+import DetailsPopover from "./DetailsPopover.tsx";
 import {
   arrangeTables,
-  initialTablePositions,
-  relationPaths,
   detailsAnchor,
   projectAnchor,
+  relationPaths,
   type DiagramAnchor,
 } from "./diagram";
+import DiagramToolbar from "./DiagramToolbar.tsx";
+import { routeRelationships } from "./relationship-routing";
+import RelationshipEdge from "./RelationshipEdge";
+import TableNode, { type TableFlowNode } from "./TableNode";
+import type { Selection } from "./types.ts";
+import type { DiagramProps } from "./view-types.ts";
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relationship: RelationshipEdge };
 type Point = { x: number; y: number };
-type Props = {
-  useCase: UseCase;
-  tables: Table[];
-  busy: string;
-  disabled: boolean;
-  fitNewData: boolean;
-  toolbar: ReactNode;
-  footer: ReactNode;
-  onLayout: (
-    patch: Pick<Partial<UseCase>, "positions" | "viewport">,
-  ) => Promise<void>;
-  onEdit: (target: EditTarget) => void;
-  onPreview: (id: string) => void;
-  onAcceptRelation: (relation: Relation) => void;
-  onDismiss: (id: string) => void;
-  onCreateTable: () => void;
-};
-export default function Diagram({
+export default function DiagramEditor(props: DiagramProps) {
+  return (
+    <ReactFlowProvider key={props.mode}>
+      {props.mode === "category" ? (
+        <CategoryDiagram {...props} />
+      ) : (
+        <TablesDiagram {...props} />
+      )}
+    </ReactFlowProvider>
+  );
+}
+function TablesDiagram({
   useCase,
-  tables,
+  tables: currentTables,
+  comparison = null,
+  comparisonMode = "changes",
   busy,
+  mode,
+  onMode,
   disabled,
   fitNewData,
   toolbar,
   footer,
   onLayout: save,
-  onEdit,
   onPreview,
-  onAcceptRelation,
-  onDismiss: dismiss,
-  onCreateTable: createTable,
-}: Props) {
+}: DiagramProps) {
   const [selection, setSelection] = useState<Selection>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<DiagramAnchor>({
     point: { x: 0, y: 0 },
   });
-  const [showSuggestions, setShowSuggestions] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState<TableFlowNode>([]);
   const flow = useReactFlow<TableFlowNode>();
   const viewport = useViewport();
   const canvas = useRef<HTMLDivElement>(null);
   const nodesInitialized = useNodesInitialized();
   const pendingView = useRef(true);
-  const confirmRelation = (relation: Relation) => {
-    setSelection(null);
-    onAcceptRelation(relation);
-  };
+  const placedSignature = useRef("");
+  const previewViewport = useRef<Viewport | null>(null);
+  const pendingPreviewFit = useRef(false);
+  const restoringViewport = useRef(false);
+  useEffect(() => {
+    if (comparison) {
+      previewViewport.current ??= flow.getViewport();
+      pendingPreviewFit.current = true;
+      setSelection(null);
+      setHoveredEdgeId(null);
+    } else if (!comparison && previewViewport.current) {
+      const previous = previewViewport.current;
+      previewViewport.current = null;
+      pendingPreviewFit.current = false;
+      restoringViewport.current = true;
+      void flow.setViewport(previous).finally(() => {
+        restoringViewport.current = false;
+      });
+    }
+  }, [comparison, flow]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSelection(null);
@@ -120,31 +124,32 @@ export default function Diagram({
     },
     [onPreview],
   );
-  const candidates = useMemo(
+  const normalRelations = useCase.relationships;
+  const displayed = useMemo(
     () =>
-      useCase?.candidates.filter(
-        (r) =>
-          !useCase.dismissed.includes(r.id) &&
-          !useCase.relationships.some((link) => link.id === r.id),
-      ) ?? [],
-    [useCase],
-  );
-  const relations = useMemo(
-    () => [
-      ...(useCase?.relationships ?? []),
-      ...(showSuggestions ? candidates : []),
+      comparison
+        ? comparisonView(comparison, comparisonMode)
+        : {
+            tables: currentTables,
+            relationships: normalRelations,
+            equations: useCase.equations,
+          },
+    [
+      comparison,
+      comparisonMode,
+      currentTables,
+      normalRelations,
+      useCase.equations,
     ],
-    [useCase?.relationships, candidates, showSuggestions],
   );
-  const hints = useMemo(
+  const tables = displayed.tables,
+    relations = displayed.relationships;
+  const marks =
+    comparison && comparisonMode === "changes" ? comparison.changes : undefined;
+  const presentation = useMemo(
     () =>
-      tables.flatMap((t) =>
-        t.columns.filter(
-          (c) =>
-            canBeInteger(t, c) && !useCase?.dismissed.includes(typeHintId(c)),
-        ),
-      ),
-    [tables, useCase?.dismissed],
+      databasePresentation(schemaSpec(tables, relations, displayed.equations)),
+    [tables, relations, displayed.equations],
   );
   const paths = useMemo(() => relationPaths(relations), [relations]);
   const hoveredRelationId = paths.find(
@@ -156,14 +161,43 @@ export default function Diagram({
       : undefined;
   const focusedRelation =
     selectedRelation ?? relations.find((r) => r.id === hoveredRelationId);
+  const layoutSignature = JSON.stringify([
+    tables.map((table) => [
+      table.id,
+      table.columns.map((column) => column.id),
+      (displayed.equations ?? []).filter((e) => e.left.source === table.id)
+        .length,
+    ]),
+    relations.map((r) => [
+      r.id,
+      r.source_table,
+      r.source_columns,
+      r.target_table,
+      r.target_columns,
+    ]),
+  ]);
   const defaultPositions = useMemo(
     () =>
-      initialTablePositions(
+      arrangeTables(
         tables,
-        [...(useCase?.relationships ?? []), ...candidates],
-        useCase.positions,
+        relations,
+        Object.fromEntries(
+          tables.map((table) => [
+            table.id,
+            {
+              width: 280,
+              height:
+                53 +
+                table.columns.length * 32 +
+                (displayed.equations ?? []).filter(
+                  (e) => e.left.source === table.id,
+                ).length *
+                  28,
+            },
+          ]),
+        ),
       ),
-    [tables, useCase?.relationships, useCase.positions, candidates],
+    [layoutSignature],
   );
 
   useEffect(() => {
@@ -171,9 +205,15 @@ export default function Diagram({
       setNodes([]);
       return;
     }
+    const arrange = placedSignature.current !== layoutSignature;
+    placedSignature.current = layoutSignature;
+    if (arrange) {
+      pendingView.current = true;
+      if (comparison) pendingPreviewFit.current = true;
+    }
     const relevant = new Set(
       focusedRelation
-        ? [focusedRelation.source.tableId, focusedRelation.target.tableId]
+        ? [focusedRelation.source_table, focusedRelation.target_table]
         : [],
     );
     setNodes((current) =>
@@ -181,28 +221,45 @@ export default function Diagram({
         ...current.find((n) => n.id === table.id),
         id: table.id,
         type: "table",
-        position:
-          current.find((n) => n.id === table.id)?.position ??
-          useCase.positions[table.id] ??
-          defaultPositions[table.id],
+        position: arrange
+          ? defaultPositions[table.id]
+          : (current.find((n) => n.id === table.id)?.position ??
+            defaultPositions[table.id]),
         dragHandle: ".table-header",
         selected: selection?.kind === "table" && selection.tableId === table.id,
         data: {
+          layoutSignature,
           table,
+          editable: false,
           activeColumns: focusedRelation
-            ? [focusedRelation.source, focusedRelation.target]
-                .filter((endpoint) => endpoint.tableId === table.id)
-                .flatMap(
-                  (endpoint) => endpoint.columnIds ?? [endpoint.columnId],
-                )
+            ? [
+                ...(focusedRelation.source_table === table.id
+                  ? focusedRelation.source_columns
+                  : []),
+                ...(focusedRelation.target_table === table.id
+                  ? focusedRelation.target_columns
+                  : []),
+              ]
             : [],
           selectedColumn:
             selection?.kind === "column" && selection.tableId === table.id
               ? selection.columnId
               : undefined,
           faded: !!focusedRelation && !relevant.has(table.id),
-          hints: showSuggestions,
-          dismissed: useCase.dismissed,
+          readOnly:
+            disabled ||
+            (!!comparison &&
+              (comparisonMode === "before" ||
+                marks?.tables[table.id]?.kind === "removed")),
+          change: marks?.tables[table.id],
+          columnChanges: marks?.columns,
+          equations: (displayed.equations ?? [])
+            .filter((e) => e.left.source === table.id)
+            .map((e) => ({
+              id: e.id,
+              label: `${pathLabel(presentation, e.left)} = ${pathLabel(presentation, e.right)}`,
+              change: marks?.equations?.[e.id]?.kind,
+            })),
           onColumn: selectColumn,
           onTable: selectTable,
           onPreview: previewTable,
@@ -211,40 +268,71 @@ export default function Diagram({
     );
   }, [
     tables,
+    disabled,
+    comparison,
+    comparisonMode,
+    marks,
     useCase?.id,
     useCase?.positions,
-    useCase?.dismissed,
     useCase?.relationships,
     selection,
     focusedRelation,
-    showSuggestions,
-    candidates,
     selectColumn,
     selectTable,
     previewTable,
     setNodes,
     defaultPositions,
+    layoutSignature,
+    displayed.equations,
+    presentation,
+    busy,
   ]);
   useEffect(() => {
     if (
+      comparison ||
       !pendingView.current ||
       !nodesInitialized ||
       nodes.length !== tables.length ||
+      !nodes.every((node) => node.data.layoutSignature === layoutSignature) ||
       !tables.length
     )
       return;
     pendingView.current = false;
-    if (!fitNewData && useCase.viewport)
-      void flow.setViewport(useCase.viewport);
-    else void flow.fitView({ padding: 0.12, maxZoom: 1 });
+    void save({
+      positions: Object.fromEntries(
+        nodes.map((node) => [node.id, node.position]),
+      ),
+    });
+    void flow.fitView({ padding: 0.12, maxZoom: 1 });
   }, [
+    comparison,
     nodesInitialized,
-    nodes.length,
+    nodes,
     tables.length,
+    layoutSignature,
     flow,
     useCase.viewport,
     fitNewData,
   ]);
+  useEffect(() => {
+    if (
+      !comparison ||
+      !pendingPreviewFit.current ||
+      !nodesInitialized ||
+      nodes.length !== tables.length ||
+      !tables.length ||
+      !nodes.every(
+        (node) => node.data.table === tables.find((t) => t.id === node.id),
+      )
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      if (!previewViewport.current) return;
+      pendingPreviewFit.current = false;
+      void flow.fitView({ padding: 0.15, maxZoom: 1, duration: 160 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [comparison, nodesInitialized, nodes, tables, flow]);
   const routes = useMemo(
     () =>
       routeRelationships(
@@ -260,29 +348,41 @@ export default function Diagram({
       ),
     [paths, nodes],
   );
-  const endpointName = (endpoint: Relation["source"]) => {
-    const table = tables.find((table) => table.id === endpoint.tableId);
-    return `${table?.name}.${(endpoint.columnIds ?? [endpoint.columnId]).map((id) => table?.columns.find((column) => column.id === id)?.name).join(", ")}`;
+  const endpointName = (tableId: string, columns: string[]) => {
+    const table = tables.find((t) => t.id === tableId);
+    return `${table?.name}.${columns.map((id) => table?.columns.find((c) => c.id === id)?.name).join(", ")}`;
   };
   const edges: Edge[] = paths.map(({ relation, group, index }) => {
-    const confirmed = useCase?.relationships.some((r) => r.id === group.id);
     const selected =
       selection?.kind === "relation" && selection.relationId === group.id;
     const focused = focusedRelation?.id === group.id;
-    const color = focused ? "#3569ad" : confirmed ? "#778493" : "#a28b57";
+    const change = marks?.relationships[group.id];
+    const color =
+      change?.kind === "added"
+        ? "#43826a"
+        : change?.kind === "removed"
+          ? "#b66663"
+          : change
+            ? "#aa8542"
+            : focused
+              ? "#3569ad"
+              : "#778493";
     const route = routes[relation.id];
     return {
       id: relation.id,
-      source: relation.source.tableId,
-      target: relation.target.tableId,
-      sourceHandle: `out-${route?.sourceSide ?? "left"}:${relation.source.columnId}`,
-      targetHandle: `in-${route?.targetSide ?? "right"}:${relation.target.columnId}`,
+      source: relation.source_table,
+      target: relation.target_table,
+      sourceHandle: `out-${route?.sourceSide ?? "left"}:${relation.source_columns[0]}`,
+      targetHandle: `in-${route?.targetSide ?? "right"}:${relation.target_columns[0]}`,
       type: "relationship",
       selected,
       zIndex: focused ? 5 : 0,
       data: { route, focused, relationId: group.id, labelVisible: index === 0 },
-      ariaLabel: `${endpointName(relation.source)} to ${endpointName(relation.target)}, ${relation.cardinality}${confirmed ? "" : ", suggested"}`,
-      label: `${endpointName(group.source)} → ${endpointName(group.target)} · ${group.cardinality}`,
+      className: change ? `is-${change.kind}` : undefined,
+      ariaLabel: `${endpointName(relation.source_table, relation.source_columns)} to ${endpointName(relation.target_table, relation.target_columns)}`,
+      label:
+        group.name ??
+        `${endpointName(group.source_table, group.source_columns)} → ${endpointName(group.target_table, group.target_columns)}`,
       domAttributes: {
         onFocus: () => setHoveredEdgeId(relation.id),
         onBlur: () => setHoveredEdgeId(null),
@@ -290,68 +390,17 @@ export default function Diagram({
       style: {
         stroke: color,
         strokeWidth: focused ? 2.3 : 1.5,
-        strokeDasharray: confirmed ? undefined : "5 4",
+        strokeDasharray: change?.kind === "removed" ? "5 4" : undefined,
         opacity: !focusedRelation || focused ? 1 : 0.16,
       },
     };
   });
-  const onConnect = (connection: Connection) => {
-    if (
-      busy ||
-      disabled ||
-      !connection.sourceHandle ||
-      !connection.targetHandle
-    )
-      return;
-    const sourceColumn = connection.sourceHandle.slice(
-        connection.sourceHandle.indexOf(":") + 1,
-      ),
-      targetColumn = connection.targetHandle.slice(
-        connection.targetHandle.indexOf(":") + 1,
-      );
-    confirmRelation({
-      id: `link:${sourceColumn}:${targetColumn}`,
-      source: { tableId: connection.source, columnId: sourceColumn },
-      target: { tableId: connection.target, columnId: targetColumn },
-      checked: 0,
-      matched: 0,
-      sourceDistinct: 0,
-      cardinality: "N:1",
-    });
-  };
-  const autoArrange = () => {
-    if (!useCase) return;
-    const sizes = Object.fromEntries(
-      nodes.map((node) => [
-        node.id,
-        {
-          width: node.measured?.width ?? 280,
-          height:
-            node.measured?.height ?? 53 + node.data.table.columns.length * 32,
-        },
-      ]),
-    );
-    const positions = arrangeTables(
-      tables,
-      relations,
-      sizes,
-      canvas.current
-        ? canvas.current.clientWidth / Math.max(1, canvas.current.clientHeight)
-        : 1.6,
-    );
-    setNodes((current) =>
-      current.map((n) => ({ ...n, position: positions[n.id] })),
-    );
-    void save({ positions, viewport: undefined });
-    requestAnimationFrame(
-      () => void flow.fitView({ padding: 0.12, maxZoom: 1, duration: 200 }),
-    );
-  };
   const saveViewport = (
     _event: MouseEvent | TouchEvent | null,
     viewport: Viewport,
   ) => {
-    if (tables.length) void save({ viewport });
+    if (tables.length && !comparison && !restoringViewport.current)
+      void save({ viewport });
   };
   const canvasBounds = canvas.current?.getBoundingClientRect();
   const projectedAnchor = projectAnchor(
@@ -384,51 +433,9 @@ export default function Diagram({
 
   return (
     <section className="diagram-editor">
-      <header className="diagram-toolbar">
+      <DiagramToolbar mode={mode} onMode={onMode} busy={!!busy}>
         {toolbar}
-        <button
-          className={`toolbar-button suggestions-control ${showSuggestions ? "active" : ""}`}
-          role="switch"
-          aria-checked={showSuggestions}
-          aria-label="Show suggestions"
-          title={
-            useCase.analysis.limited
-              ? "Relationship scan limited to 32 candidate pairs"
-              : "Show data-backed suggestions"
-          }
-          onClick={() => {
-            setShowSuggestions((v) => !v);
-            setSelection(null);
-          }}
-        >
-          Suggestions
-          <span className="suggestion-count">
-            {candidates.length + hints.length}
-          </span>
-        </button>
-
-        <button
-          className="toolbar-button"
-          onClick={autoArrange}
-          disabled={!tables.length || !!busy || disabled}
-          aria-label="Arrange by relationships"
-          title="Arrange by relationships"
-        >
-          <Icon name="layout" size={16} />
-          Arrange
-        </button>
-        <button
-          className="icon-button"
-          disabled={!tables.length}
-          onClick={() =>
-            void flow.fitView({ padding: 0.16, maxZoom: 1, duration: 200 })
-          }
-          aria-label="Fit diagram"
-          title="Fit diagram"
-        >
-          <Icon name="fit" size={16} />
-        </button>
-      </header>
+      </DiagramToolbar>
       <main className="diagram-workspace">
         <div className="canvas-container" ref={canvas}>
           <ReactFlow
@@ -437,7 +444,6 @@ export default function Diagram({
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
-            onConnect={onConnect}
             onNodeDragStop={(_event, node) => {
               const positions = Object.fromEntries(
                 nodes.map((n) => [
@@ -455,6 +461,13 @@ export default function Diagram({
               setHoveredEdgeId((id) => (id === edge.id ? null : id))
             }
             onEdgeClick={(event, edge) => {
+              if (
+                (comparisonMode === "before" && comparison) ||
+                marks?.relationships[
+                  (edge.data?.relationId as string) ?? edge.id
+                ]?.kind === "removed"
+              )
+                return;
               setSelection({
                 kind: "relation",
                 relationId: (edge.data?.relationId as string) ?? edge.id,
@@ -472,8 +485,8 @@ export default function Diagram({
             maxZoom={1.6}
             defaultViewport={{ x: 0, y: 0, zoom: 1 }}
             deleteKeyCode={null}
-            nodesConnectable={!busy && !disabled}
-            nodesDraggable={!busy && !disabled}
+            nodesConnectable={false}
+            nodesDraggable={!busy && !disabled && !comparison}
             connectionMode={ConnectionMode.Loose}
             connectionRadius={32}
             proOptions={{ hideAttribution: true }}
@@ -486,63 +499,26 @@ export default function Diagram({
               color="#dfe2e6"
             />
           </ReactFlow>
-          {!tables.length && !busy && (
-            <button className="empty-import" onClick={createTable}>
+          {!tables.length && !busy && !disabled && (
+            <button className="empty-import" onClick={() => onMode("category")}>
               <Icon name="plus" size={18} />
-              Create table
+              Add objects in Category
             </button>
           )}
-          {!!tables.length && (
-            <div className="canvas-controls">
-              <button
-                aria-label="Zoom out"
-                title="Zoom out"
-                onClick={() => void flow.zoomOut({ duration: 100 })}
-              >
-                <Icon name="minus" size={15} />
-              </button>
-              <button
-                aria-label="Zoom in"
-                title="Zoom in"
-                onClick={() => void flow.zoomIn({ duration: 100 })}
-              >
-                <Icon name="plus" size={15} />
-              </button>
-            </div>
-          )}
-          {selection && anchorVisible && (
-            <DetailsPopover
-              selection={selection}
-              tables={tables}
-              useCase={useCase}
-              point={popoverPoint}
-              onClose={() => setSelection(null)}
-              onPreview={previewTable}
-              onConfirm={confirmRelation}
-              onDismiss={(id) => {
-                setSelection(null);
-                dismiss(id);
-              }}
-              onRemove={(id) => {
-                const relation = useCase.relationships.find((r) => r.id === id);
-                if (relation) {
-                  setSelection(null);
-                  onEdit({
-                    kind: "drop_foreign_key",
-                    tableId: relation.source.tableId,
-                    relation,
-                  });
-                }
-              }}
-              disabled={!!busy || disabled}
-              onEdit={(target) => {
-                if (!busy) {
-                  setSelection(null);
-                  onEdit(target);
-                }
-              }}
-            />
-          )}
+          {!disabled &&
+            (!comparison || comparisonMode !== "before") &&
+            selection &&
+            anchorVisible && (
+              <DetailsPopover
+                mode="tables"
+                selection={selection}
+                tables={currentTables}
+                useCase={useCase}
+                point={popoverPoint}
+                onClose={() => setSelection(null)}
+                onPreview={previewTable}
+              />
+            )}
           {busy && (
             <div className="import-progress" role="status">
               <span className="spinner" />

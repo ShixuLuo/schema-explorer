@@ -1,0 +1,527 @@
+{
+  "cqlVersion": "20261024",
+  "comparison": "attributed graph isomorphism, all identities and references",
+  "results": [
+    {
+      "dataset": "Added",
+      "method": "sigma",
+      "rows": {
+        "A": 2,
+        "B": 4
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "Added",
+      "method": "pi",
+      "rows": {
+        "A": 4,
+        "B": 2
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "Chain",
+      "method": "sigma",
+      "rows": {
+        "X": 2,
+        "A": 2,
+        "B": 4,
+        "C": 3
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "Chain",
+      "method": "pi",
+      "rows": {
+        "X": 4,
+        "A": 4,
+        "B": 2,
+        "C": 1
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "Duplicate",
+      "method": "sigma",
+      "rows": {
+        "X": 2,
+        "A": 2,
+        "B": 3,
+        "C": 3
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "Duplicate",
+      "method": "pi",
+      "rows": {
+        "X": 2,
+        "A": 2,
+        "B": 1,
+        "C": 1
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "EmptyTarget",
+      "method": "sigma",
+      "rows": {
+        "X": 1,
+        "A": 1,
+        "B": 1,
+        "C": 1
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "EmptyTarget",
+      "method": "pi",
+      "rows": {
+        "X": 0,
+        "A": 0,
+        "B": 0,
+        "C": 0
+      },
+      "fullGraphIsomorphic": true
+    },
+    {
+      "dataset": "AddedConstant",
+      "method": "delta",
+      "fullGraphIsomorphic": true
+    }
+  ],
+  "oracle": {
+    "EmptyTargetInput": {
+      "A": [
+        {
+          "__id": "x1.incoming",
+          "value": "v10"
+        }
+      ],
+      "B": [],
+      "C": [],
+      "X": [
+        {
+          "incoming": "x1.incoming",
+          "__id": "x1",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "I": {
+      "A": [
+        {
+          "__id": "a2",
+          "value": "v20"
+        },
+        {
+          "__id": "a1",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "__id": "b2"
+        },
+        {
+          "__id": "b1"
+        }
+      ]
+    },
+    "DuplicateSigma": {
+      "A": [
+        {
+          "f": "a2.f",
+          "__id": "a2",
+          "value": "v10"
+        },
+        {
+          "f": "x1.incoming.f",
+          "__id": "x1.incoming",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "b1.next",
+          "__id": "b1"
+        },
+        {
+          "next": "a2.f.next",
+          "__id": "a2.f"
+        },
+        {
+          "next": "x1.incoming.f.next",
+          "__id": "x1.incoming.f"
+        }
+      ],
+      "C": [
+        {
+          "__id": "b1.next"
+        },
+        {
+          "__id": "a2.f.next"
+        },
+        {
+          "__id": "x1.incoming.f.next"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "x1.incoming",
+          "__id": "x2",
+          "xvalue": "v10"
+        },
+        {
+          "incoming": "x1.incoming",
+          "__id": "x1",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "DuplicatePi": {
+      "A": [
+        {
+          "f": "(gen1000=b1)",
+          "__id": "(gen1000=a2)(gen1001=b1)",
+          "value": "v10"
+        },
+        {
+          "f": "(gen1000=b1)",
+          "__id": "(gen1000=x1.incoming)(gen1001=b1)",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "(gen1000=b1.next)",
+          "__id": "(gen1000=b1)"
+        }
+      ],
+      "C": [
+        {
+          "__id": "(gen1000=b1.next)"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "(gen1000=x1.incoming)(gen1001=b1)",
+          "__id": "(gen1000=x2)(gen1002=b1)",
+          "xvalue": "v10"
+        },
+        {
+          "incoming": "(gen1000=x1.incoming)(gen1001=b1)",
+          "__id": "(gen1000=x1)(gen1002=b1)",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "EmptyTargetSigma": {
+      "A": [
+        {
+          "f": "x1.incoming.f",
+          "__id": "x1.incoming",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "x1.incoming.f.next",
+          "__id": "x1.incoming.f"
+        }
+      ],
+      "C": [
+        {
+          "__id": "x1.incoming.f.next"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "x1.incoming",
+          "__id": "x1",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "AddedConstant": {
+      "A": [
+        {
+          "added": "n",
+          "__id": "A:a2",
+          "value": "v20"
+        },
+        {
+          "added": "n",
+          "__id": "A:a1",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "__id": "B:b2"
+        },
+        {
+          "__id": "B:b1"
+        }
+      ]
+    },
+    "AddedPi": {
+      "A": [
+        {
+          "f": "(gen1000=b2)",
+          "__id": "(gen1000=a2)(gen1001=b2)",
+          "value": "v20"
+        },
+        {
+          "f": "(gen1000=b2)",
+          "__id": "(gen1000=a1)(gen1001=b2)",
+          "value": "v10"
+        },
+        {
+          "f": "(gen1000=b1)",
+          "__id": "(gen1000=a2)(gen1001=b1)",
+          "value": "v20"
+        },
+        {
+          "f": "(gen1000=b1)",
+          "__id": "(gen1000=a1)(gen1001=b1)",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "__id": "(gen1000=b2)"
+        },
+        {
+          "__id": "(gen1000=b1)"
+        }
+      ]
+    },
+    "DuplicateInput": {
+      "A": [
+        {
+          "__id": "a2",
+          "value": "v10"
+        },
+        {
+          "__id": "x1.incoming",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "b1.next",
+          "__id": "b1"
+        }
+      ],
+      "C": [
+        {
+          "__id": "b1.next"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "x1.incoming",
+          "__id": "x2",
+          "xvalue": "v10"
+        },
+        {
+          "incoming": "x1.incoming",
+          "__id": "x1",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "EmptyTargetPi": {
+      "A": [],
+      "B": [],
+      "C": [],
+      "X": []
+    },
+    "AddedSigma": {
+      "A": [
+        {
+          "f": "a2.f",
+          "__id": "a2",
+          "value": "v20"
+        },
+        {
+          "f": "a1.f",
+          "__id": "a1",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "__id": "b2"
+        },
+        {
+          "__id": "b1"
+        },
+        {
+          "__id": "a2.f"
+        },
+        {
+          "__id": "a1.f"
+        }
+      ]
+    },
+    "ChainInput": {
+      "A": [
+        {
+          "__id": "x2.incoming",
+          "value": "v20"
+        },
+        {
+          "__id": "x1.incoming",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "b1.next",
+          "__id": "b2"
+        },
+        {
+          "next": "b1.next",
+          "__id": "b1"
+        }
+      ],
+      "C": [
+        {
+          "__id": "b1.next"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "x2.incoming",
+          "__id": "x2",
+          "xvalue": "v20"
+        },
+        {
+          "incoming": "x1.incoming",
+          "__id": "x1",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "ChainSigma": {
+      "A": [
+        {
+          "f": "x2.incoming.f",
+          "__id": "x2.incoming",
+          "value": "v20"
+        },
+        {
+          "f": "x1.incoming.f",
+          "__id": "x1.incoming",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "b1.next",
+          "__id": "b2"
+        },
+        {
+          "next": "b1.next",
+          "__id": "b1"
+        },
+        {
+          "next": "x2.incoming.f.next",
+          "__id": "x2.incoming.f"
+        },
+        {
+          "next": "x1.incoming.f.next",
+          "__id": "x1.incoming.f"
+        }
+      ],
+      "C": [
+        {
+          "__id": "b1.next"
+        },
+        {
+          "__id": "x2.incoming.f.next"
+        },
+        {
+          "__id": "x1.incoming.f.next"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "x2.incoming",
+          "__id": "x2",
+          "xvalue": "v20"
+        },
+        {
+          "incoming": "x1.incoming",
+          "__id": "x1",
+          "xvalue": "v10"
+        }
+      ]
+    },
+    "ChainPi": {
+      "A": [
+        {
+          "f": "(gen1000=b2)",
+          "__id": "(gen1000=x2.incoming)(gen1001=b2)",
+          "value": "v20"
+        },
+        {
+          "f": "(gen1000=b2)",
+          "__id": "(gen1000=x1.incoming)(gen1001=b2)",
+          "value": "v10"
+        },
+        {
+          "f": "(gen1000=b1)",
+          "__id": "(gen1000=x2.incoming)(gen1001=b1)",
+          "value": "v20"
+        },
+        {
+          "f": "(gen1000=b1)",
+          "__id": "(gen1000=x1.incoming)(gen1001=b1)",
+          "value": "v10"
+        }
+      ],
+      "B": [
+        {
+          "next": "(gen1000=b1.next)",
+          "__id": "(gen1000=b2)"
+        },
+        {
+          "next": "(gen1000=b1.next)",
+          "__id": "(gen1000=b1)"
+        }
+      ],
+      "C": [
+        {
+          "__id": "(gen1000=b1.next)"
+        }
+      ],
+      "X": [
+        {
+          "incoming": "(gen1000=x2.incoming)(gen1001=b2)",
+          "__id": "(gen1000=x2)(gen1002=b2)",
+          "xvalue": "v20"
+        },
+        {
+          "incoming": "(gen1000=x1.incoming)(gen1001=b2)",
+          "__id": "(gen1000=x1)(gen1002=b2)",
+          "xvalue": "v10"
+        },
+        {
+          "incoming": "(gen1000=x2.incoming)(gen1001=b1)",
+          "__id": "(gen1000=x2)(gen1002=b1)",
+          "xvalue": "v20"
+        },
+        {
+          "incoming": "(gen1000=x1.incoming)(gen1001=b1)",
+          "__id": "(gen1000=x1)(gen1002=b1)",
+          "xvalue": "v10"
+        }
+      ]
+    }
+  }
+}

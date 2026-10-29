@@ -1,114 +1,94 @@
 # Schema Explorer
 
-A local CSV and schema workspace. Code and UI are in English. No LLM is connected.
-
-## Run
-
-Requires Node.js 22.12+ and a current Rust toolchain.
+A local schema editor with CSV samples, checkpoints and PostgreSQL migration SQL. No LLM or database credentials are involved.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`. Rust listens on `127.0.0.1:7331`; Vite forwards `/api`. Ctrl+C stops both processes. A custom Rust toolchain can be configured through `SCHEMA_CARGO` or ignored `.local/runtime.json`.
+Requires Node.js 22.12 or later. Open `http://127.0.0.1:5173/`.
 
-For a static build, run `npm run build`, then `cargo run --manifest-path backend/Cargo.toml --features server --bin server`. `SCHEMA_PORT` and `SCHEMA_WEB_DIR` configure that service.
+## Edit and preview
 
-## Manual operations
+Choose **New model** for an empty model, or **Open model** for a saved one. **Category** is the editing view. **Tables** shows the relational projection of the same model; switching views does not create another version or copy.
 
-All model edits use Preview, Apply, and one saved Undo point. Table and field menus expose the operations. Create table is available in the toolbar; New use case starts an empty workspace.
+The Category view exposes seven elementary edits: add/remove object, add/remove arrow, add/remove path equation, and rename. Category remains a node-and-arrow graph. Built-in Text/Integer types are always defined and only appear when referenced. Shared Text/Integer nodes grow to provide separate, aligned incoming ports. Attribute labels sit on parallel horizontal runs; entities stay compact graph nodes. A single shared type distributes entity groups on both sides to reduce height. There are no table cards in Category. Both views arrange automatically; the manual Arrange/Fit buttons are removed.
 
-| Primitive | Behavior |
-|---|---|
-| CreateTable | Creates an empty table with explicitly defined fields and types. |
-| DropTable | Removes the table and records. The UI explicitly composes removal of connected foreign keys, and previews the complete change. |
-| RenameTable | Renames the table while preserving stable IDs, records, and references. |
-| AddColumn | Fills existing records with an explicit text/integer constant or nullable NULL. |
-| DropColumn | Removes a field and its cells. Keys using that field must be removed first. |
-| RenameColumn | Renames the field while preserving its ID and values. |
-| AddPrimaryKey | Declares an ordered single-field or composite primary key after validating every record. |
-| DropPrimaryKey | Removes the key; rejects foreign-key dependencies. The fields remain non-nullable, matching PostgreSQL behavior. |
-| AddForeignKey | Declares an ordered field mapping to a complete primary key with matching types. Every record is checked. |
-| DropForeignKey | Removes the constraint without deleting fields or records. |
+The persistent lower-right **+** menu contains **Object**, **Arrow**, and **Relation**. Object creates an entity with a primary key whose name defaults to `_id`, and includes CSV import. The key name appears below the entity name in Category and supports double-click renaming. Renaming changes the storage column name, while record values and reference bindings retain their IDs. CSV import asks for a primary-key column per file; leaving it unselected generates one-based `_id` row numbers, preserving duplicate records. Explicit keys are validated for empty and duplicate values across the complete file. A conflicting existing `_id` column must be selected or renamed before importing; it is never overwritten. Arrow opens a compact form for Source, Target, and Name. Its target selector offers entities or built-in Text/Integer types; clicking graph nodes also fills source and target. Types are chosen here rather than in Object creation. There are no connection ports or drag-to-connect interaction; dragging nodes only adjusts layout. Double-click a node or arrow label to rename it and use its corner **×** to delete it. Select an arrow and choose **Edit arrow** to change source, target, field or type. Existing configuration is prefilled. Endpoint changes are composed as one draft; well-typed dependent relations are preserved and incompatible ones appear as removed in the schema diff. Recreating an attribute on another source or type does not copy its values. Use the pencil beside a relation to edit its selected loop; an unchanged existing relation, including one with repeated paths, is preserved.
 
-Primary keys reject duplicate tuples and NULL. Foreign keys use MATCH SIMPLE: a source tuple containing any NULL is exempt; an empty string is a real value and must match. There are no automatic repairs. Duplicate keys and orphan references report a failing row.
+Relation uses one selection of arrows. Click an arrow to select it; click it again to deselect it. Each arrow is selected at most once in the current UI. Stored paths and the model still support repeated composition. No path validation runs during selection. **Confirm** searches for two directed walks with the same source and target that use exactly the selected occurrences. An unambiguous closed selection creates the equation; incompatible directions produce an error while retaining the selection. If a directed cycle has multiple meanings, choose the displayed equation and confirm. The editor never silently selects an identity base point.
 
-The diagram connects specific fields. A PK badge marks key fields. Dashed links are suggestions; solid links are declared foreign keys. Composite foreign keys remain one constraint and display every field pair as grouped lines. Hovering or selecting any part highlights the whole mapping; details show the complete constraint. Previous versions' confirmed annotations are preserved as candidates, because those annotations never declared a primary key or enforced a foreign key. Set the target primary key, then explicitly validate a candidate to promote it.
+A new entity-to-type arrow starts as an unconfigured attribute action; no NULL value or Δ migration is silently selected. Its explicit value configuration supports a fixed Text/Integer/NULL value or a same-type attribute on the same entity. These are Δ mappings. Free scalar Σ (labelled unknowns) and exhaustive scalar Π are not implemented. A pending action cannot be committed, read as migrated data, or exported as SQL; configuring it recomputes the draft from its original validated data.
 
-Undo restores the previous schema, relationships, data references, and committed migration history. It survives reload. A later model edit replaces that Undo point; importing CSV clears it. Restoring a snapshot is distinct from proving a migration reversible. Plans and previews are temporary and are not persisted as separate objects.
+Entity-to-entity arrows use explicitly selected target keys and source fields. Reusing a business field is a choice; the editor never matches by name, assigns a singleton target, or chooses Σ/Π. Declaring a new unique key requires its checkbox. A new reference allocates separate storage carrier fields. Internal IDs, CSV columns explicitly designated as identity, and generated reference carriers are not business attributes in Category; Tables retains the physical representation. Business fields reused as key bindings remain business attributes.
 
-## PostgreSQL SQL export
+The old matching workflow no longer creates actions or persistent equations. Legacy match metadata is ignored when loading the model and emitting constraints. Existing populated references and saved data remain intact; historical population operations can still be replayed. Only explicitly declared Relations create ongoing business path constraints.
 
-Export SQL offers Changes, Baseline schema, and Current schema. The database-independent generator replays committed primitives through the same operation core. A SqlDialect implementation renders each validated step; PostgreSQL is the first implementation.
+The **Σ | Δ | Π** segmented selector uses equal-width symbol buttons. Each Action occupies one row. All enabled buttons use the same configuration routing: a migration with editable parameters opens its configuration dialog, while a migration with no editable parameters applies directly. Types and a single compatible source field are inferred, and controls with no actual choice are hidden. A selected configurable symbol can be clicked again. Explain describes only the current selection; disabled-button tooltips explain unavailable choices. Commit stays disabled until all actions are configured, with a hover/focus tooltip identifying the action and missing choice. New object, reference, relation and rename actions wait for an explicit migration choice. Historical method-less operations retain their recorded execution behavior, except that retired automatic matching equations are no longer installed.
 
-The baseline is the model immediately before the first recorded edit. Legacy edits already present in a saved use case are part of its baseline. Applied operations are recorded only to generate migration SQL; cancelled previews never enter that history. Later imports are recorded as table creations. Undo removes the undone operations from the history.
+| Edit | Executable migration | Current limits |
+| --- | --- | --- |
+| Add isolated object | Σ: empty; Π: one record | Π allows only a generated identity at creation; other attributes need explicit values. |
+| Remove object | Δ | Removes incident arrows/relations and their dedicated, unused storage carriers. |
+| Add entity arrow with new carriers | Σ: free completion; Π: finite path choices; Δ: explicit existing path | Free Σ requires acyclic reachable targets with internal identities and no unknown business values. Π supports acyclic upstream paths, declared path relations, generated identities and incoming storage references; business uniqueness cannot survive arbitrary duplication. |
+| Bind existing source fields | Σ: complete missing target keys; Π: maximal closed restriction | Σ does not invent business attributes or chase arbitrary outgoing key constraints. |
+| Add scalar attribute | Δ: explicitly configured constant or same-type local attribute | Labelled scalar unknowns for Σ, exhaustive Text/Integer Π, and arbitrary expressions remain unavailable. |
+| Remove arrow | Δ | Deletes a dedicated unused carrier and FK constraint. A separately existing business attribute is retained. |
+| Add relation | Σ: congruence quotient; Π: maximal closed subinstance | Σ rewrites all incoming references and closes under all arrows. Conflicting fixed business values fail atomically. Shared storage carriers are not supported by the quotient template. |
+| Remove relation | Δ | Removes its enforcement; records remain. |
+| Rename | Σ, Δ or Π through an isomorphism | All three retain records and values. |
 
-Changes must run against a database matching the baseline. CSV records are not exported. AddColumn includes the data initialization and nullability change, without inventing a permanent default. Current schema and Baseline schema create empty schemas. Generated scripts use transactions and quoted identifiers. PostgreSQL identifiers exceeding 63 UTF-8 bytes and unsupported NUL text are rejected. No database credentials or automatic SQL execution are involved. Generated scripts do not pretend to restore data removed by destructive operations.
+Finite templates reject unsupported cycles and oversized path expansions with a reason. Π preview checks sample expansion before materializing data; exported SQL does not have the local sample row limit. No enabled option silently substitutes a different migration.
 
-## Module boundaries
+The new-reference Σ and Π templates and constant-term Δ have been independently compared against CQL in `verification/elementary-arrows.cql`. The comparison checks complete attributed-graph isomorphism, including identities and every reference, across a downstream chain, incoming references, duplicate records and an empty target. It also rejects a deliberately miswired graph with unchanged row counts. This does not claim a generic SQL compiler for arbitrary Kan extensions. Refinement SQL temporarily rebuilds reference/equation constraints inside the migration transaction, and restores all final constraints before commit; failure rolls back the entire transaction.
 
-Frontend dependencies point toward the model contracts. Concrete adapters are selected only in `app/runtime.ts` and the worker entry point.
+The storage presentation derives reference-key equations from explicit physical bindings. Category shows business attributes and reference arrows without exposing generated identities or dedicated carriers as business attributes. Foreign-key constraints enforce the key bindings; only explicitly recorded path equations add ongoing business constraints. Historical lookup metadata does not install new matching triggers.
 
-- `frontend/src/model/`: platform-independent schema, workspace, wire contracts and evidence. No React, React Flow, IndexedDB, network or worker imports.
-- `frontend/src/application/`: preparation, migration history, Undo, import publication and export. It depends on `WorkspaceStore` and `ModelEngine` capabilities, not concrete adapters.
-- `frontend/src/adapters/`: IndexedDB, memory storage, CSV and Rust HTTP implementations. Data references, chunking, buffering, reclamation and transaction details stay here.
-- `frontend/src/app/`: composition, worker transport and navigation.
-- `frontend/src/diagram/`: graph state, field-level selection, details, layout and routing.
-- `frontend/src/schema/`: operation forms, preview presentation, data preview and SQL export UI. These receive capabilities from the composition root.
-- `frontend/src/shared/`: shared icon component.
+If sample execution fails while the schema and its SQL remain valid, **Precheck failed** lists the errors and offers **Force schema change** or **Cancel**. Force creates a schema-only draft: it never disables foreign keys, uniqueness, null checks, or path equations. Commit records it with data marked unverified; original samples remain in the previous validated checkpoint. Data previews are unavailable until the data is migrated or a validated checkpoint is restored. Later edits to an unverified schema remain schema-only. Exported SQL retains its transaction and runtime constraints and aborts on incompatible real data.
 
-`WorkspaceStore` publishes a complete model update using an expected revision. The application constructs history and Undo; the adapter owns atomic publication and safe data reclamation. Sealed writers cannot modify published rows. Prepared changes expose no physical chunk keys, and UI receives only reports and samples. The same editor runs against memory and IndexedDB stores, including when their read batches differ.
+Every structural change joins the current draft. The footer offers **Schema diff**, **Before** and **After**. Its inset **Details** drawer opens upward with compact **Actions** and **Preview** tabs. Preview shows all affected tables with before/after samples, per-table collapse and scrolling; forced schema-only changes show **No preview**. **Commit** creates one checkpoint; **Rollback** discards the draft. The current UI intentionally exposes only these elementary edits; copy/combine and other higher-level transformations are deferred.
 
-`ModelEngine` owns batch evaluation, complete candidate validation and SQL generation. The Rust HTTP adapter follows a scan plan selected by Rust; it does not infer primary-key/reference phases itself. Public engine calls contain no IndexedDB access. Application code contains no HTTP URLs or browser worker construction.
+## SQL, checkpoints and tags
 
-Backend boundaries are explicit:
+**SQL** selects a starting checkpoint and generates its recorded forward migration to **Editing**. Checkpoint labels include tags; with a Live tag, Live is the default start. Copy the generated SQL into the existing PostgreSQL database corresponding to that checkpoint.
 
-- `backend/src/domain/`: a curated public boundary over private model, value, operation and constraint implementations. Schema and record invariants live with the model; complete-data constraints use that model in one direction. Cell validation and integer parsing have one owner.
-- `backend/src/analysis/`: profiling and provider-independent bounded context, depending on the domain.
-- `backend/src/migration/`: operation replay and the SQL dialect contract. Dialects receive both schema versions and own SQL syntax and script boundaries. PostgreSQL is the implemented production dialect.
-- `backend/src/adapters/csv.rs`: explicit CSV decoding into domain values.
-- `backend/src/application/validation.rs`: temporary validation lifetimes, capacity, expiry and failure cleanup, without HTTP or Tokio dependencies.
-- `backend/src/http/`: payload conversion, routing and runtime scheduling. Enabled only by the `server` Cargo feature.
+The export contains table-level SQL, not CSV records or per-record updates. Adding a constant field uses a temporary column default and removes the default afterward. PostgreSQL checks constraints when each statement executes. Historical copy/combine operations remain readable and exportable.
 
-A normal library/CLI build has no Axum, Tokio, Tower or Tower HTTP dependency. Use `--features server` to build the local HTTP adapter. No separate core crate or dependency-injection framework is required.
+History keeps recorded parents. Continue from here moves Editing; subsequent commits create another path. Tags label checkpoints without changing the model or invalidating a draft. Live denotes a user-confirmed external deployment and only moves when explicitly changed. A non-ancestor checkpoint has no recorded forward migration to Editing; the app does not invent one from a schema diff.
 
-The same Rust primitives and constraint checker serve CLI, HTTP and SQL generation. `preview` checks a complete bounded state; `preview_batch` is explicitly partial and requires complete candidate validation before publication. The Worker streams affected records and requested constraint projections. The local service retains at most two temporary validation indexes, each capped at 40 MiB of key content. Completion, failure, cancellation or inactivity releases them; they are not persisted.
+## Abstraction and interpretation
 
-## Storage and resource policy
+`model/presentation.ts` defines the seven edits: add/drop object, add/drop arrow, add/drop path equation, and rename. Paths, equation evidence and functor composition are checked without SQL, table bindings or records. `model/migration.ts` composes Δ/Σ/Π, checks and supplied interpretations with matching input/output presentations.
 
-Data remains in IndexedDB for the current browser profile and origin. CSV imports must be UTF-8, comma-delimited, and have unique nonempty headers. Empty strings, whitespace, quoted newlines, and leading zeros are preserved. Imported business fields stay text; `integer?` is only a deterministic hint.
+Database actions are macros. `model/database-commands.ts` updates their bindings, and `model/database-presentation.ts` translates them to elementary edits and explicit mappings. Copy uses a pullback; the aligned-combination macro uses a pullback followed by the selected pushforward. SQL row templates read those functor images, not UI operation names or sample values. Keys and supplied attribute values remain explicit database interpretations rather than being claimed as ordinary path equations.
 
-| Limit | Default |
-|---|---:|
-| File / import batch | 5 MiB / 20 MiB |
-| Files per import | 10 |
-| Rows / fields per table | 50,000 / 100 |
-| Cells per table | 200,000 |
-| Cell / record content | 8 KiB / 256 KiB |
-| Current use-case cell content | 40 MiB |
-| Tables / fields / foreign keys per use case | 24 / 400 / 32 |
-| Parser chunk | 128 KiB |
-| Stored row chunk | 200 rows or approximately 256 KiB of cell content |
-| Rust operation batch | 200 rows and 2 MiB of cell content |
-| Operation / validation HTTP request | 4 MiB |
-| Operations per edit / recorded SQL history | 32 / 256 |
-| SQL export HTTP request | 16 MiB |
-| Relationship analysis | 32 candidate pairs, 16 suggestions |
-| Data preview | 50 rows per page, maximum 100 per read |
+`planCommands` translates the ordered actions into existing `DatabaseChange` values once. Each records the before/after bindings, abstract migration and explicit storage parameters. `adapters/postgres-compiler.ts` consumes these changes; SQL lowering does not inspect the original UI command. Each SQL rule returns its statements and the tables it actually writes, plus finite expansion information where needed. Preview persists those returned tables, including downstream creations, and Actions displays the prepared change descriptions without rebuilding schemas during rendering. Compound gestures retain configuration controls for every pending step. The application returns planning facts and the compiler's written-table IDs. UI-only action grouping and explanations live in `schema/migration-plan.ts`; the kernel does not choose controls or require an Actions tab. Before/after sample rows are loaded only when Preview is opened, rather than being computed and transported during every edit. Unused step statistics and removed-relation lists are no longer generated.
 
-Full record sets never accumulate in React state. The checker retains only primary-key indexes and coverage, not complete records. Bounds apply before expanding values. Browser quotas may reject writes. Undo can retain an additional previous data version. Abrupt termination can leave unreferenced temporary data slots; it cannot publish a partial edit. Heap usage has not been benchmarked.
+The compiler includes identity-sequence synchronization in the exported program, so preview and exported SQL share the same allocation prerequisites. Existing sequences are never decreased.
+
+`adapters/postgres-compiler.ts` instantiates the abstract changes against database bindings. The same abstract change can be bound to different table/field names and data without changing its algorithm. The preview adapter executes the resulting SQL in PGlite inside a Worker. SQL export uses that same compiler. Production data stays in the existing database; exported statements operate on its tables.
+
+Path equations are edited on the source object and shown on the canvas. They can compare composed references and typed attributes. New relation edits wait for the user to select Σ or Π. Π removes violating rows and closes the remaining instance under every reference. Σ computes congruence closure, validates business values, chooses storage representatives and rewrites references. SQL statement triggers enforce the resulting equation. Renaming or removing generators refreshes or removes corresponding constraints. Historical method-less relation operations retain their original check semantics; they are never silently changed during history replay. Scalar conflicts are reported rather than resolved by choosing a business value.
+
+The application stages local sample results and publishes model/data references, operations and Editing atomically in IndexedDB. Checkpoints retain immutable row chunks. Draft baselines carry the model, data references and revision without copying checkpoint history. Full history remains owned by the store and publication reads its current state transactionally. Existing saved data and historical operation field names are decoded on the explicit workspace load path. The v6 load boundary decodes older relation shapes, removes retired statistics and recommendation fields, and preserves compound-key order and dedicated carrier roles. Checkpoint IDs, parents, tags, row references and recorded migration behavior remain intact; row chunks are not rewritten. The format gate prevents older pages from writing the retired relation shape. Legacy lookup operations decode to explicit carrier metadata and their recorded population operation; they do not create matching constraints.
+
+Table, column and foreign-key structure share one definition between bindings and view metadata. References use the same ordered column arrays in SQL, saved models and both diagram views; there is no separate UI relation representation or relation statistics. The retired generic operation editor, suggestion state, per-cell profiling, unused diff component and forwarding modules have been removed. The app directly opens the object editor and the graph delegates arrow construction/replacement to application functions.
+
+CQL is an offline oracle for the existing Δ/Σ/Π templates. Those SQL templates were written in this project and checked against CQL results; they were not generated by CQL. Embedding SQL actually emitted by CQL remains deferred. CQL is not called by the application. The reference program and recorded comparison are in `verification/`; to rerun the independent CQL/PostgreSQL comparison, provide `CQL_JAVA` and `CQL_JAR` (or an ignored `.local/cql.json`) and run:
+
+```sh
+npm run verify:templates
+node --experimental-strip-types scripts/verify-elementary-arrows.mjs
+```
+
+There is no Java service or Rust HTTP runtime in the app. The diagram shows user-declared arrows; heuristic relationship and type suggestions have been removed from the editor.
 
 ## Checks
 
 ```sh
-npm run build
 npm test
-cargo test --manifest-path backend/Cargo.toml --no-default-features
-cargo test --manifest-path backend/Cargo.toml --features server
-cargo tree --manifest-path backend/Cargo.toml --no-default-features --edges normal --depth 1
+npm run build
 ```
 
-`npm test` starts an isolated Rust service on an available port and runs the same editor scenarios against memory and IndexedDB adapters. The Node IndexedDB tests use fake-indexeddb as a development-only dependency; the browser uses native IndexedDB. Tests cover migration, layout preservation, Undo, stale revisions, cross-batch duplicate keys, orphan references, draft disposal, failed validation cleanup, data immutability, ownership and SQL export. Architecture tests check imports, including dynamic and type imports, so contracts/application code cannot silently acquire concrete storage or UI dependencies.
-
-Rust tests cover primitive composition, schema/value invariants, composite keys, NULL and empty strings, coverage, integer precision, bounds, SQL replay, quoting, HTTP behavior and validation lifetimes. A test dialect verifies that planning is independent of PostgreSQL syntax and transaction wrappers; it is not a second supported database. Browser checks cover native IndexedDB, real CSV import and existing saved use cases.
+Tests cover the same workflows with memory and IndexedDB stores, multi-step composition, SQL/preview equivalence, empty-model evolution, constraints, checkpoints, tags, Undo and saved-data loading. Local CSV sample limits remain bounded; they do not limit the rows affected by exported SQL on the user's database.

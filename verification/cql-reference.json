@@ -1,0 +1,236 @@
+{
+  "cqlVersion": "20261024",
+  "templateVersion": 1,
+  "results": {
+    "sum": 10,
+    "matched": 4,
+    "copy": 4,
+    "mixed": 8
+  },
+  "reference": {
+    "Input": {
+      "A": [
+        {
+          "av": "vline\n\"quoted\"\\path",
+          "__id": "a5",
+          "an": "v5"
+        },
+        {
+          "av": "n",
+          "__id": "a4",
+          "an": "v4"
+        },
+        {
+          "av": "v",
+          "__id": "a3",
+          "an": "v3"
+        },
+        {
+          "av": "vleft",
+          "__id": "a2",
+          "an": "v2"
+        },
+        {
+          "av": "vshared",
+          "__id": "a1",
+          "an": "v9223372036854775807"
+        },
+        {
+          "av": "vshared",
+          "__id": "a0",
+          "an": "v9223372036854775807"
+        }
+      ],
+      "B": [
+        {
+          "bv": "n",
+          "__id": "b3",
+          "bn": "v4"
+        },
+        {
+          "bv": "v",
+          "__id": "b2",
+          "bn": "v3"
+        },
+        {
+          "bv": "vright",
+          "__id": "b1",
+          "bn": "v2"
+        },
+        {
+          "bv": "vshared",
+          "__id": "b0",
+          "bn": "v9223372036854775807"
+        }
+      ]
+    },
+    "Matched": {
+      "T": [
+        {
+          "number": "v4",
+          "__id": "(gen1000=a4)(gen1001=b3)",
+          "value": "n"
+        },
+        {
+          "number": "v3",
+          "__id": "(gen1000=a3)(gen1001=b2)",
+          "value": "v"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "(gen1000=a1)(gen1001=b0)",
+          "value": "vshared"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "(gen1000=a0)(gen1001=b0)",
+          "value": "vshared"
+        }
+      ]
+    },
+    "Mixed": {
+      "T": [
+        {
+          "number": "v9223372036854775807",
+          "__id": "B:(gen1000=a0)(gen1001=b0)",
+          "value": "vshared"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "B:(gen1000=a1)(gen1001=b0)",
+          "value": "vshared"
+        },
+        {
+          "number": "v3",
+          "__id": "B:(gen1000=a3)(gen1001=b2)",
+          "value": "v"
+        },
+        {
+          "number": "v4",
+          "__id": "B:(gen1000=a4)(gen1001=b3)",
+          "value": "n"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "A:(gen1000=a0)(gen1001=b0)",
+          "value": "vshared"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "A:(gen1000=a1)(gen1001=b0)",
+          "value": "vshared"
+        },
+        {
+          "number": "v3",
+          "__id": "A:(gen1000=a3)(gen1001=b2)",
+          "value": "v"
+        },
+        {
+          "number": "v4",
+          "__id": "A:(gen1000=a4)(gen1001=b3)",
+          "value": "n"
+        }
+      ]
+    },
+    "Copies": {
+      "A": [
+        {
+          "av": "n",
+          "__id": "A:(gen1000=a4)(gen1001=b3)",
+          "an": "v4"
+        },
+        {
+          "av": "v",
+          "__id": "A:(gen1000=a3)(gen1001=b2)",
+          "an": "v3"
+        },
+        {
+          "av": "vshared",
+          "__id": "A:(gen1000=a1)(gen1001=b0)",
+          "an": "v9223372036854775807"
+        },
+        {
+          "av": "vshared",
+          "__id": "A:(gen1000=a0)(gen1001=b0)",
+          "an": "v9223372036854775807"
+        }
+      ],
+      "B": [
+        {
+          "bv": "n",
+          "__id": "B:(gen1000=a4)(gen1001=b3)",
+          "bn": "v4"
+        },
+        {
+          "bv": "v",
+          "__id": "B:(gen1000=a3)(gen1001=b2)",
+          "bn": "v3"
+        },
+        {
+          "bv": "vshared",
+          "__id": "B:(gen1000=a1)(gen1001=b0)",
+          "bn": "v9223372036854775807"
+        },
+        {
+          "bv": "vshared",
+          "__id": "B:(gen1000=a0)(gen1001=b0)",
+          "bn": "v9223372036854775807"
+        }
+      ]
+    },
+    "Sum": {
+      "T": [
+        {
+          "number": "v4",
+          "__id": "b3",
+          "value": "n"
+        },
+        {
+          "number": "v3",
+          "__id": "b2",
+          "value": "v"
+        },
+        {
+          "number": "v2",
+          "__id": "b1",
+          "value": "vright"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "b0",
+          "value": "vshared"
+        },
+        {
+          "number": "v5",
+          "__id": "a5",
+          "value": "vline\n\"quoted\"\\path"
+        },
+        {
+          "number": "v4",
+          "__id": "a4",
+          "value": "n"
+        },
+        {
+          "number": "v3",
+          "__id": "a3",
+          "value": "v"
+        },
+        {
+          "number": "v2",
+          "__id": "a2",
+          "value": "vleft"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "a1",
+          "value": "vshared"
+        },
+        {
+          "number": "v9223372036854775807",
+          "__id": "a0",
+          "value": "vshared"
+        }
+      ]
+    }
+  }
+}

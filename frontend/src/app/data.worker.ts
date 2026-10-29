@@ -1,12 +1,13 @@
+import { failureInfo } from "../model/failure.ts";
 import { importFiles } from "../application/import.ts";
 import { createIndexedDbStore } from "../adapters/indexeddb-store.ts";
-import { createRustHttpEngine } from "../adapters/rust-http.ts";
+import { createPostgresEngine } from "../adapters/postgres-engine.ts";
 import { readCsv } from "../adapters/csv.ts";
 import { prepareEdit } from "../application/edit.ts";
 import type { DataTask } from "./tasks.ts";
 
 const store = createIndexedDbStore(),
-  engine = createRustHttpEngine();
+  engine = createPostgresEngine();
 const progress = (message: string) =>
   self.postMessage({ kind: "progress", message });
 async function run(data: DataTask) {
@@ -23,17 +24,18 @@ async function run(data: DataTask) {
           data.caseId,
           data.operations,
           progress,
+          data.base,
+          data.schemaOnly,
         ),
       });
   } catch (error) {
     self.postMessage({
       kind: "error",
-      message:
+      ...failureInfo(
         error instanceof DOMException && error.name === "QuotaExceededError"
-          ? "Browser storage is full. Free some space and try again."
-          : error instanceof Error
-            ? error.message
-            : "Could not process this data.",
+          ? new Error("Browser storage is full. Free some space and try again.")
+          : error,
+      ),
     });
   }
 }

@@ -1,14 +1,18 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import type { Table } from "../model/schema.ts";
-import { canBeInteger, typeHintId } from "../model/profile.ts";
+import type { ViewTable, ModelChange } from "../model/comparison.ts";
 import Icon from "../shared/Icon";
 export type TableNodeData = {
-  table: Table;
+  layoutSignature?: string;
+  table: ViewTable;
+  readOnly?: boolean;
+  editable?: boolean;
+  change?: ModelChange;
+  columnChanges?: Record<string, ModelChange>;
   activeColumns: string[];
   selectedColumn?: string;
   faded: boolean;
-  hints: boolean;
-  dismissed: string[];
+  equations?: { id: string; label: string; change?: string }[];
+  onEquation?: (id: string) => void;
   onColumn: (
     tableId: string,
     columnId: string,
@@ -25,27 +29,52 @@ export default function TableNode({
   const { table } = data;
   return (
     <div
-      className={`table-card ${selected ? "is-selected" : ""} ${data.faded ? "is-faded" : ""}`}
+      className={`table-card ${selected ? "is-selected" : ""} ${data.faded ? "is-faded" : ""} ${data.readOnly ? "is-readonly" : ""} ${data.change ? `is-${data.change.kind}` : ""}`}
+      data-change={data.change?.kind}
     >
       <div
         className="table-header"
-        onDoubleClick={() => data.onPreview(table.id)}
+        onDoubleClick={() => {
+          if (!data.readOnly) data.onPreview(table.id);
+        }}
       >
-        <Icon name="table" size={15} />
+        <Icon
+          name={
+            data.change?.kind === "added"
+              ? "plus"
+              : data.change?.kind === "removed"
+                ? "minus"
+                : data.change
+                  ? "edit"
+                  : "table"
+          }
+          size={15}
+        />
         <button
           className="table-title"
+          disabled={data.readOnly}
           onClick={(event) =>
             data.onTable(table.id, { x: event.clientX, y: event.clientY })
           }
           title={table.name}
         >
-          {table.name}
+          {data.change?.previousName && (
+            <>
+              <span className="previous-name">{data.change.previousName}</span>
+              <span className="rename-arrow">→</span>
+            </>
+          )}
+          <span className="current-name">{table.name}</span>
         </button>
         <span className="table-row-count">
-          {table.rowCount.toLocaleString()} rows
+          {table.dataStatus === "unverified"
+            ? "data unverified"
+            : `${table.rowCount.toLocaleString()} rows`}
         </span>
         <button
           className="node-data-button nodrag"
+          disabled={data.readOnly}
+          aria-hidden={data.readOnly}
           onClick={(event) => {
             event.stopPropagation();
             data.onPreview(table.id);
@@ -58,30 +87,33 @@ export default function TableNode({
       </div>
       <div className="table-columns">
         {table.columns.map((column) => {
-          const hint =
-            data.hints &&
-            canBeInteger(table, column) &&
-            !data.dismissed.includes(typeHintId(column));
+          const change = data.columnChanges?.[column.id];
+          const readOnly = data.readOnly || change?.kind === "removed";
           const active =
             data.activeColumns.includes(column.id) ||
             data.selectedColumn === column.id;
           return (
             <div
               key={column.id}
-              className={`column-row ${active ? "is-active" : ""}`}
+              className={`column-row ${active ? "is-active" : ""} ${change ? `is-${change.kind}` : ""}`}
+              data-column-id={column.id}
+              data-change={change?.kind}
             >
               <Handle
+                isConnectable={!readOnly && data.editable !== false}
                 type="target"
                 position={Position.Left}
                 id={`in-left:${column.id}`}
               />
               <Handle
+                isConnectable={!readOnly && data.editable !== false}
                 type="source"
                 position={Position.Left}
                 id={`out-left:${column.id}`}
               />
               <button
                 className="column-button nodrag"
+                disabled={readOnly}
                 onClick={(e) => {
                   e.stopPropagation();
                   data.onColumn(table.id, column.id, {
@@ -96,25 +128,33 @@ export default function TableNode({
                     PK
                   </span>
                 )}
+                {!(table.primaryKey ?? []).includes(column.id) &&
+                  table.uniqueKeys?.some((key) => key.includes(column.id)) && (
+                    <span className="primary-key-badge" title="Unique key">
+                      UK
+                    </span>
+                  )}
                 <span className="column-name" title={column.name}>
-                  {column.name}
+                  {change?.previousName && (
+                    <>
+                      <span className="previous-name">
+                        {change.previousName}
+                      </span>
+                      <span className="rename-arrow">→</span>
+                    </>
+                  )}
+                  <span className="current-name">{column.name}</span>
                 </span>
-                {hint && (
-                  <span
-                    className="type-hint"
-                    title="Suggested type: integer. Click the field to see the check."
-                  >
-                    integer?
-                  </span>
-                )}
                 <span className="column-type">{column.dataType ?? "text"}</span>
               </button>
               <Handle
+                isConnectable={!readOnly && data.editable !== false}
                 type="target"
                 position={Position.Right}
                 id={`in-right:${column.id}`}
               />
               <Handle
+                isConnectable={!readOnly && data.editable !== false}
                 type="source"
                 position={Position.Right}
                 id={`out-right:${column.id}`}
@@ -123,6 +163,27 @@ export default function TableNode({
           );
         })}
       </div>
+      {!!data.equations?.length && (
+        <div className="table-equations">
+          {data.equations.map((e) => (
+            <button
+              key={e.id}
+              className={`equation-chip ${e.change ?? ""}`}
+              disabled={data.readOnly || e.change === "removed"}
+              title={e.label}
+              aria-label={
+                data.editable === false
+                  ? `Equation ${e.label}`
+                  : `Remove equation ${e.label}`
+              }
+              onClick={() => data.onEquation?.(e.id)}
+            >
+              <span>{e.label}</span>
+              {data.editable !== false && <span aria-hidden="true">×</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

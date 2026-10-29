@@ -1,22 +1,21 @@
-import type { CellValue, Table } from "../model/schema.ts";
-import type { UseCase } from "../model/workspace.ts";
 import type {
   Operation,
-  RustState,
-  RustEvaluation,
   SchemaSpec,
-  TypedCell,
   SqlBundle,
+  TableSpec,
 } from "../model/operations.ts";
+import type { ModelPublication, TagChange } from "../model/publication.ts";
+import type { CellValue, Table } from "../model/schema.ts";
+import type { CaseInfo, UseCase } from "../model/workspace.ts";
 
 export type WorkspaceSnapshot = { useCase: UseCase; tables: Table[] };
+export type EditBase = {
+  useCase: Pick<UseCase, "id" | "revision" | "relationships" | "equations">;
+  tables: Table[];
+};
 export type CaseInfoPatch = Partial<
-  Pick<UseCase, "name" | "positions" | "viewport" | "dismissed">
+  Pick<UseCase, "name" | "positions" | "viewport">
 >;
-export type ModelUpdate = Pick<
-  UseCase,
-  "relationships" | "candidates" | "analysis" | "migration" | "undo"
-> & { tables: Table[] };
 export type RowBatch = { offset: number; rows: CellValue[][] };
 export type RowWriter = {
   append(rows: CellValue[][]): Promise<void>;
@@ -27,7 +26,9 @@ export type RowWriter = {
 // This is the storage capability the application needs. No transaction,
 // chunk keys, object stores, or mutable data slots cross this boundary.
 export interface WorkspaceStore {
-  listCases(): Promise<UseCase[]>;
+  listCases(): Promise<CaseInfo[]>;
+  load(id: string): Promise<WorkspaceSnapshot>;
+  updateTags(id: string, change: TagChange): Promise<void>;
   addCase(useCase: UseCase): Promise<void>;
   readCase(id: string): Promise<UseCase | undefined>;
   snapshot(id: string): Promise<WorkspaceSnapshot>;
@@ -43,38 +44,42 @@ export interface WorkspaceStore {
   commit(
     id: string,
     expectedRevision: number,
-    update: ModelUpdate,
+    publication: ModelPublication,
   ): Promise<void>;
   discard(tables: Table[]): Promise<void>;
   close(): Promise<void>;
 }
 
 export type Progress = (message: string) => void;
-export type ProjectionSource = (
-  tableId: string,
-  columnIds: string[],
-) => AsyncIterable<{ start: number; rows: Record<string, TypedCell>[] }>;
+export type DataSource = (tableId: string) => AsyncIterable<RowBatch>;
+export type DataSink = (
+  table: TableSpec,
+  rows: AsyncIterable<RowBatch>,
+) => Promise<void>;
 export interface ModelEngine {
-  evaluateBatch(
-    state: RustState,
-    operations: Operation[],
-  ): Promise<RustEvaluation>;
-  validate(
+  evaluate(
     schema: SchemaSpec,
-    counts: Record<string, number>,
-    source: ProjectionSource,
+    operations: Operation[],
+    source: DataSource,
+    sink: DataSink,
     progress: Progress,
-  ): Promise<void>;
+  ): Promise<{
+    schema: SchemaSpec;
+    changedData: string[];
+    changes: import("../model/database-commands.ts").DatabaseChange[];
+  }>;
   sql(
     base: SchemaSpec,
     operations: Operation[],
     current: SchemaSpec,
   ): Promise<SqlBundle>;
 }
+export type CsvInput = { file: File; primaryKey?: string };
 export type CsvReader = (
   file: File,
   caseId: string,
   id: string,
   store: WorkspaceStore,
   progress: Progress,
+  primaryKey?: string,
 ) => Promise<Table>;

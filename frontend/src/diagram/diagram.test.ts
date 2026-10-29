@@ -1,13 +1,13 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
+import type { ForeignKeySpec, Table } from "../model/schema.ts";
 import {
   arrangeTables,
   detailsAnchor,
-  projectAnchor,
   initialTablePositions,
+  projectAnchor,
   relationPaths,
 } from "./diagram.ts";
-import type { Relation, Table } from "../model/schema.ts";
 import {
   routeRelationships,
   type RoutingTable,
@@ -25,22 +25,16 @@ function table(id: string): Table {
       id: `${id}:${index}`,
       name: `field_${index}`,
       index,
-      emptyCount: 0,
-      distinctCount: 0,
-      integerFailures: 0,
-      formatChanges: 0,
     })),
   };
 }
-function relation(child: string, parent: string): Relation {
+function relation(child: string, parent: string): ForeignKeySpec {
   return {
     id: `${child}-${parent}`,
-    source: { tableId: child, columnId: `${child}:0` },
-    target: { tableId: parent, columnId: `${parent}:0` },
-    checked: 0,
-    matched: 0,
-    sourceDistinct: 0,
-    cardinality: "N:1",
+    source_table: child,
+    source_columns: [`${child}:0`],
+    target_table: parent,
+    target_columns: [`${parent}:0`],
   };
 }
 function assertNoOverlap(
@@ -164,8 +158,10 @@ test("parallel relationships use separate vertical tracks", () => {
     {
       ...relation("child", "parent"),
       id: "second",
-      source: { tableId: "child", columnId: "child:1" },
-      target: { tableId: "parent", columnId: "parent:1" },
+      source_table: "child",
+      source_columns: ["child:1"],
+      target_table: "parent",
+      target_columns: ["parent:1"],
     },
   ];
   const routes = routeRelationships(links, tables);
@@ -239,7 +235,8 @@ test("routing ignores missing tables and fields", () => {
       [
         {
           ...relation("a", "b"),
-          source: { tableId: "a", columnId: "missing" },
+          source_table: "a",
+          source_columns: ["missing"],
         },
       ],
       tables,
@@ -272,14 +269,17 @@ test("a foreign key to its own field has a visible loop outside the table", () =
 
 test("composite foreign keys project every field pair without becoming separate constraints", () => {
   const r = relation("child", "parent");
-  r.source.columnIds = ["child:0", "child:1"];
-  r.target.columnIds = ["parent:0", "parent:1"];
+  r.source_columns = ["child:0", "child:1"];
+  r.target_columns = ["parent:0", "parent:1"];
   const paths = relationPaths([r]);
   assert.equal(paths.length, 2);
   assert.ok(paths.every((p) => p.group === r));
   assert.equal(new Set(paths.map((p) => p.relation.id)).size, 2);
   assert.deepEqual(
-    paths.map((p) => [p.relation.source.columnId, p.relation.target.columnId]),
+    paths.map((p) => [
+      p.relation.source_columns[0],
+      p.relation.target_columns[0],
+    ]),
     [
       ["child:0", "parent:0"],
       ["child:1", "parent:1"],

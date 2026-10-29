@@ -1,4 +1,6 @@
-import type { Table, Relation } from "./schema.ts";
+import type { MigrationHistory, Operation } from "./operations.ts";
+import type { Equation } from "./presentation.ts";
+import type { ForeignKeySpec, Table } from "./schema.ts";
 export type Point = { x: number; y: number };
 export type Viewport = { x: number; y: number; zoom: number };
 export type UseCase = {
@@ -9,54 +11,55 @@ export type UseCase = {
   tableIds: string[];
   positions: Record<string, Point>;
   viewport?: Viewport;
-  relationships: Relation[];
-  candidates: Relation[];
-  dismissed: string[];
-  analysis: { checkedPairs: number; limited: boolean };
+  relationships: ForeignKeySpec[];
+  equations?: Equation[];
   revision?: number;
-  modelVersion?: number;
-  migration?: import("./operations.ts").MigrationHistory;
-  undo?: ModelSnapshot;
+  modelVersion: 6;
+  undo?: EditingUndo;
+  history: History;
 };
-export type ModelSnapshot = {
-  tables: Table[];
-  candidates: Relation[];
-  analysis: UseCase["analysis"];
+export type EditingUndo = {
+  checkpointId: string | null;
   description: string;
-  removedRelationships?: Relation[];
-  relationships?: Relation[];
-  migration?: import("./operations.ts").MigrationHistory;
+  positions?: Record<string, Point>;
+  viewport?: Viewport;
 };
+export type SavedWorkspace = { tables: Table[] } & Pick<
+  UseCase,
+  "relationships" | "equations" | "positions" | "viewport"
+>;
+export type CheckpointInfo = {
+  id: string;
+  name: string;
+  createdAt: number;
+  // undefined is retained only for historical states with unrecorded ancestry.
+  parentId?: string | null;
+  operationCount?: number;
+  tags?: string[];
+};
+export type Checkpoint = CheckpointInfo & {
+  state: SavedWorkspace;
+  operations?: Operation[];
+  // Preserved audit data from the old flat log; new commits do not create it.
+  legacyMigration?: MigrationHistory;
+};
+export type CheckpointRange = { from: string | null; to: string };
+export type History = { checkpoints: Checkpoint[]; editing: string | null };
 
-export function restoreWorkspace(value: UseCase): UseCase {
-  if (!value) throw new Error("This use case no longer exists.");
-  if (value.modelVersion === 2) return value;
-  if ((value.modelVersion ?? 0) > 2)
-    throw new Error("This use case was created by a newer version of the app.");
-  // Previous solid links were annotations, not declared constraints. Preserve
-  // them as candidates until the user explicitly validates them as foreign keys.
-  const candidates = [
-    ...new Map(
-      [...value.candidates, ...value.relationships].map((r) => [
-        r.id,
-        { ...r, enforced: false },
-      ]),
-    ).values(),
-  ];
+export function retainedTables(value: UseCase): Table[] {
+  return value.history.checkpoints.flatMap((c) => c.state.tables);
+}
+
+export type CaseInfo = Pick<
+  UseCase,
+  "id" | "name" | "createdAt" | "updatedAt" | "tableIds"
+>;
+export function caseInfo(value: CaseInfo): CaseInfo {
   return {
-    ...value,
-    modelVersion: 2,
-    relationships: [],
-    candidates,
-    undo: value.undo
-      ? {
-          ...value.undo,
-          relationships: [],
-          candidates: [
-            ...value.undo.candidates,
-            ...(value.undo.removedRelationships ?? []),
-          ],
-        }
-      : undefined,
+    id: value.id,
+    name: value.name,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    tableIds: [...value.tableIds],
   };
 }

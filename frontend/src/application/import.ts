@@ -1,7 +1,6 @@
-import type { WorkspaceStore, CsvReader, Progress } from "./ports.ts";
+import type { WorkspaceStore, CsvReader, CsvInput, Progress } from "./ports.ts";
 import type { Table } from "../model/schema.ts";
 import { LIMITS } from "./limits.ts";
-import { findRelations } from "./analysis.ts";
 import { publishImport } from "./workspaces.ts";
 
 export function validateFiles(files: File[]) {
@@ -19,10 +18,11 @@ export async function importFiles(
   store: WorkspaceStore,
   reader: CsvReader,
   caseId: string,
-  files: File[],
+  inputs: CsvInput[],
   progress: Progress,
 ) {
-  const added: Table[] = [];
+  const added: Table[] = [],
+    files = inputs.map((input) => input.file);
   try {
     validateFiles(files);
     const before = await store.snapshot(caseId),
@@ -37,9 +37,16 @@ export async function importFiles(
       throw new Error(
         "This import would exceed the 40 MiB use-case data limit.",
       );
-    for (const file of files)
+    for (const { file, primaryKey } of inputs)
       added.push(
-        await reader(file, caseId, crypto.randomUUID(), store, progress),
+        await reader(
+          file,
+          caseId,
+          crypto.randomUUID(),
+          store,
+          progress,
+          primaryKey,
+        ),
       );
     const tables = [...old, ...added];
     if (new Set(tables.map((t) => t.name)).size !== tables.length)
@@ -48,13 +55,7 @@ export async function importFiles(
       );
     if (tables.reduce((n, t) => n + t.columns.length, 0) > 400)
       throw new Error("A use case supports up to 400 fields.");
-    const { candidates, analysis } = await findRelations(
-      store,
-      tables,
-      before.useCase.relationships,
-      progress,
-    );
-    await publishImport(store, before, added, candidates, analysis);
+    await publishImport(store, before, added);
   } catch (error) {
     await store.discard(added).catch(() => {});
     throw error;

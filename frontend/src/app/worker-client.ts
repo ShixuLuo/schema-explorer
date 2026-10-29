@@ -1,3 +1,4 @@
+import { ReadableFailure, failureInfo } from "../model/failure.ts";
 import type { DataTask, DataResult } from "./tasks.ts";
 export function runDataTask(
   task: DataTask,
@@ -22,7 +23,8 @@ export function runDataTask(
         return;
       }
       cleanup();
-      if (event.data.kind === "error") reject(new Error(event.data.message));
+      if (event.data.kind === "error")
+        reject(new ReadableFailure(failureInfo(event.data)));
       else resolve(event.data as DataResult);
     };
     worker.onerror = (event) => {

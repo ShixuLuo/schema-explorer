@@ -1,12 +1,13 @@
 import {
   Graph,
   layout,
+  type EdgeLabel,
   type GraphLabel,
   type NodeLabel,
-  type EdgeLabel,
 } from "@dagrejs/dagre";
-import type { XYPosition, Viewport } from "@xyflow/react";
-import type { Relation, Table } from "../model/schema.ts";
+import type { Viewport, XYPosition } from "@xyflow/react";
+import type { ViewTable } from "../model/comparison.ts";
+import type { ForeignKeySpec } from "../model/schema.ts";
 
 export type DiagramAnchor = {
   point: XYPosition;
@@ -43,25 +44,25 @@ export function projectAnchor(
 }
 
 type Size = { width: number; height: number };
-export function relationPaths(relations: Relation[]) {
+export function relationPaths(relations: ForeignKeySpec[]) {
   return relations.flatMap((group) => {
-    const sources = group.source.columnIds ?? [group.source.columnId];
-    const targets = group.target.columnIds ?? [group.target.columnId];
+    const sources = group.source_columns;
+    const targets = group.target_columns;
     return sources.map((columnId, index) => ({
       group,
       index,
       relation: {
         ...group,
         id: sources.length > 1 ? `${group.id}/field/${index}` : group.id,
-        source: { tableId: group.source.tableId, columnId },
-        target: { tableId: group.target.tableId, columnId: targets[index] },
+        source_columns: [columnId],
+        target_columns: [targets[index]],
       },
     }));
   });
 }
 export function initialTablePositions(
-  tables: Table[],
-  relations: Relation[],
+  tables: ViewTable[],
+  relations: ForeignKeySpec[],
   saved: Record<string, XYPosition>,
 ): Record<string, XYPosition> {
   const retained = tables.filter((table) => saved[table.id]);
@@ -82,8 +83,8 @@ export function initialTablePositions(
   );
 }
 export function arrangeTables(
-  tables: Table[],
-  relations: Relation[],
+  tables: ViewTable[],
+  relations: ForeignKeySpec[],
   sizes: Record<string, Size> = {},
   aspectRatio = 1.6,
 ): Record<string, XYPosition> {
@@ -91,16 +92,16 @@ export function arrangeTables(
   const ids = new Set(tables.map((table) => table.id));
   const links = relations.filter(
     (relation) =>
-      ids.has(relation.source.tableId) &&
-      ids.has(relation.target.tableId) &&
-      relation.source.tableId !== relation.target.tableId,
+      ids.has(relation.source_table) &&
+      ids.has(relation.target_table) &&
+      relation.source_table !== relation.target_table,
   );
   const neighbors = new Map(
     tables.map((table) => [table.id, new Set<string>()]),
   );
   for (const link of links) {
-    neighbors.get(link.source.tableId)!.add(link.target.tableId);
-    neighbors.get(link.target.tableId)!.add(link.source.tableId);
+    neighbors.get(link.source_table)!.add(link.target_table);
+    neighbors.get(link.target_table)!.add(link.source_table);
   }
   const visited = new Set<string>();
   const components: string[][] = [];
@@ -136,8 +137,7 @@ export function arrangeTables(
                   (id) =>
                     links.filter(
                       (link) =>
-                        link.source.tableId === id ||
-                        link.target.tableId === id,
+                        link.source_table === id || link.target_table === id,
                     ).length,
                 ),
               ),
@@ -158,12 +158,12 @@ export function arrangeTables(
         );
       }
       for (const link of links)
-        if (component.includes(link.source.tableId)) {
+        if (component.includes(link.source_table)) {
           // Referenced tables appear on the left; foreign-key arrows still point
           // toward them when rendered by the diagram.
           graph.setEdge(
-            link.target.tableId,
-            link.source.tableId,
+            link.target_table,
+            link.source_table,
             { weight: 1, minlen: 1 },
             link.id,
           );

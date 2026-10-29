@@ -1,6 +1,14 @@
-import type { WorkspaceStore, CaseInfoPatch } from "../application/ports.ts";
-import { restoreWorkspace, type UseCase } from "../model/workspace.ts";
-import type { Table, CellValue } from "../model/schema.ts";
+import type { CaseInfoPatch, WorkspaceStore } from "../application/ports.ts";
+import { publishModel, publishTags } from "../model/publication.ts";
+import {
+  loadedWorkspace,
+  restoreWorkspace,
+  restoredTables,
+  storedTables,
+  type WorkspaceRecord,
+} from "../model/restore-workspace.ts";
+import type { CellValue, Table } from "../model/schema.ts";
+import { caseInfo, retainedTables } from "../model/workspace.ts";
 import { rowWriter } from "./row-writer.ts";
 type StoredChunk = { tableId: string; index: number; rows: CellValue[][] };
 const request = <T>(r: IDBRequest<T>) =>
@@ -50,31 +58,16 @@ export function createIndexedDbStore(
     tx.objectStore("chunks").put(chunk);
     await done;
   }
-  async function removeReferences(tableIds: string[]) {
-    const db = await database();
-    for (const id of tableIds) {
-      const tx = db.transaction("chunks", "readwrite");
-      const done = finished(tx);
-      const cursor = tx
-        .objectStore("chunks")
-        .index("tableId")
-        .openKeyCursor(IDBKeyRange.only(id));
-      cursor.onsuccess = () => {
-        const item = cursor.result;
-        if (item) {
-          tx.objectStore("chunks").delete(item.primaryKey);
-          item.continue();
-        }
-      };
-      await done;
-    }
-  }
   async function readRows(
     table: Table,
     offset: number,
     limit = 50,
   ): Promise<CellValue[][]> {
     limit = Math.min(100, Math.max(1, limit));
+    if (table.dataStatus === "unverified")
+      throw new Error(
+        "Sample data has not been migrated to this schema. The original data is retained in the previous validated checkpoint.",
+      );
     const db = await database();
     const tableId = table.dataId ?? table.id;
     const cursor = await request(
@@ -102,55 +95,134 @@ export function createIndexedDbStore(
   }
 
   const ref = (table: Table) => table.dataId ?? table.id;
-  const readCase = async (id: string) => {
-    const db = await database();
-    const value = await request<UseCase | undefined>(
-      db.transaction("useCases").objectStore("useCases").get(id),
+  async function loadTables(
+    store: IDBObjectStore,
+    ids: string[],
+  ): Promise<Table[]> {
+    const values = await Promise.all(
+      ids.map((id) => request<Table | undefined>(store.get(id))),
     );
-    return value ? restoreWorkspace(value) : undefined;
-  };
-  const snapshot = async (id: string) => {
+    if (values.some((table) => !table))
+      throw new Error("Stored table metadata is unavailable.");
+    return values as Table[];
+  }
+  const readWorkspace = async (id: string) => {
     const db = await database(),
       tx = db.transaction(["useCases", "tables"]);
-    const raw = await request<UseCase | undefined>(
+    const raw = await request<WorkspaceRecord | undefined>(
       tx.objectStore("useCases").get(id),
     );
-    if (!raw) throw new Error("This use case no longer exists.");
-    const useCase = restoreWorkspace(raw);
-    const tables = await Promise.all(
-      useCase.tableIds.map((id) =>
-        request<Table | undefined>(tx.objectStore("tables").get(id)),
-      ),
+    if (!raw) return;
+    const useCase = loadedWorkspace(raw);
+    const tables = await loadTables(tx.objectStore("tables"), useCase.tableIds);
+    return { useCase, tables };
+  };
+  const readCase = async (id: string) => {
+    const db = await database();
+    const raw = await request<WorkspaceRecord | undefined>(
+      db.transaction("useCases").objectStore("useCases").get(id),
     );
-    if (tables.some((t) => !t))
-      throw new Error("Stored table metadata is unavailable.");
-    return { useCase, tables: tables as Table[] };
+    return raw ? loadedWorkspace(raw) : undefined;
+  };
+  const snapshot = async (id: string) => {
+    const value = await readWorkspace(id);
+    if (!value) throw new Error("This use case no longer exists.");
+    return value;
   };
   const discardReferences = async (references: string[]) => {
     if (!references.length) return;
+    // Keep the live-reference check and reclamation in the same transaction.
+    // A concurrent checkpoint publication cannot race this deletion.
     const db = await database(),
-      tx = db.transaction(["tables", "useCases"]);
-    const [tables, cases] = await Promise.all([
-      request<Table[]>(tx.objectStore("tables").getAll()),
-      request<UseCase[]>(tx.objectStore("useCases").getAll()),
-    ]);
-    const live = new Set(
-      [...tables, ...cases.flatMap((c) => c.undo?.tables ?? [])].map(ref),
-    );
-    await removeReferences(
-      [...new Set(references)].filter((id) => !live.has(id)),
-    );
+      tx = db.transaction(["tables", "useCases", "chunks"], "readwrite"),
+      done = finished(tx);
+    try {
+      const [tables, cases] = await Promise.all([
+        request<Table[]>(tx.objectStore("tables").getAll()),
+        request<WorkspaceRecord[]>(tx.objectStore("useCases").getAll()),
+      ]);
+      const byId = new Map(tables.map((table) => [table.id, table]));
+      if (cases.some((record) => record.tableIds.some((id) => !byId.has(id))))
+        throw new Error("Stored table metadata is unavailable.");
+      const live = new Set(
+        [...tables, ...cases.flatMap(storedTables)].map(ref),
+      );
+      const chunks = tx.objectStore("chunks");
+      for (const id of new Set(references)) {
+        if (live.has(id)) continue;
+        const cursor = chunks
+          .index("tableId")
+          .openKeyCursor(IDBKeyRange.only(id));
+        cursor.onsuccess = () => {
+          const item = cursor.result;
+          if (item) {
+            chunks.delete(item.primaryKey);
+            item.continue();
+          }
+        };
+      }
+      await done;
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {}
+      await done.catch(() => {});
+      throw error;
+    }
   };
   return {
     async listCases() {
       const db = await database();
-      return (
-        await request<UseCase[]>(
-          db.transaction("useCases").objectStore("useCases").getAll(),
-        )
-      )
-        .map(restoreWorkspace)
-        .sort((a, b) => b.updatedAt - a.updatedAt);
+      const cases = await request<WorkspaceRecord[]>(
+        db.transaction("useCases").objectStore("useCases").getAll(),
+      );
+      return cases.map(caseInfo).sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    async load(id) {
+      const db = await database(),
+        tx = db.transaction(["useCases", "tables"], "readwrite"),
+        done = finished(tx);
+      try {
+        const records = tx.objectStore("useCases");
+        const raw = await request<WorkspaceRecord | undefined>(records.get(id));
+        if (!raw) throw new Error("This use case no longer exists.");
+        const tables = restoredTables(
+          await loadTables(tx.objectStore("tables"), raw.tableIds),
+          raw.relationships,
+        );
+        const useCase = {
+          ...restoreWorkspace(raw, tables),
+          updatedAt: Date.now(),
+        };
+        for (const table of tables) tx.objectStore("tables").put(table);
+        records.put(useCase);
+        await done;
+        return { useCase, tables };
+      } catch (error) {
+        try {
+          tx.abort();
+        } catch {}
+        await done.catch(() => {});
+        throw error;
+      }
+    },
+    async updateTags(id, change) {
+      const db = await database(),
+        tx = db.transaction("useCases", "readwrite"),
+        done = finished(tx);
+      try {
+        const records = tx.objectStore("useCases");
+        const raw = await request<WorkspaceRecord | undefined>(records.get(id));
+        if (!raw) throw new Error("This use case no longer exists.");
+        records.put(publishTags(loadedWorkspace(raw), change));
+        await done;
+      } catch (error) {
+        try {
+          tx.abort();
+        } catch {}
+        await done.catch(() => {});
+        throw error;
+      }
     },
     async addCase(value) {
       const db = await database(),
@@ -167,17 +239,18 @@ export function createIndexedDbStore(
         done = finished(tx),
         store = tx.objectStore("useCases");
       try {
-        const stored = await request<UseCase | undefined>(store.get(id));
+        const stored = await request<WorkspaceRecord | undefined>(
+          store.get(id),
+        );
         if (!stored) throw new Error("This use case no longer exists.");
         if (
           Object.keys(patch).some(
-            (key) =>
-              !["name", "positions", "viewport", "dismissed"].includes(key),
+            (key) => !["name", "positions", "viewport"].includes(key),
           )
         )
-          throw new Error("Model changes must use Preview and Apply.");
+          throw new Error("Model changes must use a draft and Commit.");
         const next = {
-          ...restoreWorkspace(stored),
+          ...loadedWorkspace(stored),
           ...patch,
           id,
           updatedAt: Date.now(),
@@ -198,11 +271,20 @@ export function createIndexedDbStore(
         tx = db.transaction("useCases", "readwrite"),
         done = finished(tx),
         store = tx.objectStore("useCases");
-      const c = await request<UseCase | undefined>(store.get(id));
-      if (c && !c.tableIds.length) store.delete(id);
+      const c = await request<WorkspaceRecord | undefined>(store.get(id));
+      if (
+        c &&
+        !c.tableIds.length &&
+        !loadedWorkspace(c).history.checkpoints.length
+      )
+        store.delete(id);
       await done;
     },
     async *rows(table) {
+      if (table.dataStatus === "unverified")
+        throw new Error(
+          "Sample data has not been migrated to this schema. The original data is retained in the previous validated checkpoint.",
+        );
       const db = await database();
       for (let offset = 0; offset < table.rowCount;) {
         const chunk = await request<StoredChunk | undefined>(
@@ -233,7 +315,7 @@ export function createIndexedDbStore(
         discard: async (reference) => discardReferences([reference]),
       });
     },
-    async commit(id, expectedRevision, update) {
+    async commit(id, expectedRevision, publication) {
       const db = await database(),
         tx = db.transaction(["useCases", "tables"], "readwrite"),
         done = finished(tx);
@@ -241,41 +323,28 @@ export function createIndexedDbStore(
         metadata = tx.objectStore("tables");
       let obsolete: Table[] = [];
       try {
-        const raw = await request<UseCase | undefined>(cases.get(id));
+        const raw = await request<WorkspaceRecord | undefined>(cases.get(id));
         if (!raw) throw new Error("This use case no longer exists.");
-        const current = restoreWorkspace(raw);
-        if ((current.revision ?? 0) !== expectedRevision)
-          throw new Error("The model changed. Preview this edit again.");
+        const currentTables = await loadTables(metadata, raw.tableIds);
+        const current = loadedWorkspace(raw);
+        const next = publishModel(current, expectedRevision, publication);
         const owned = await Promise.all(
-          update.tables.map((t) =>
+          next.tables.map((t) =>
             request<Table | undefined>(metadata.get(t.id)),
           ),
         );
         if (
-          update.tables.some(
+          next.tables.some(
             (t, i) => t.caseId !== id || (owned[i] && owned[i]!.caseId !== id),
           )
         )
           throw new Error("A table belongs to another use case.");
-        obsolete = [
-          ...(await Promise.all(
-            current.tableIds.map((id) => request<Table>(metadata.get(id))),
-          )),
-          ...(current.undo?.tables ?? []),
-        ];
-        const retained = new Set(update.tables.map((t) => t.id));
+        obsolete = [...currentTables, ...retainedTables(current)];
+        const retained = new Set(next.tables.map((t) => t.id));
         for (const oldId of current.tableIds)
           if (!retained.has(oldId)) metadata.delete(oldId);
-        for (const table of update.tables) metadata.put(table);
-        const { tables: _, ...model } = update;
-        cases.put({
-          ...current,
-          ...model,
-          tableIds: update.tables.map((t) => t.id),
-          revision: expectedRevision + 1,
-          updatedAt: Date.now(),
-          modelVersion: 2,
-        });
+        for (const table of next.tables) metadata.put(table);
+        cases.put(next.useCase);
         await done;
       } catch (error) {
         try {

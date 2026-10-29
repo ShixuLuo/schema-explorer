@@ -10,6 +10,4 @@ export const LIMITS = {
   caseBytes: 40 * 1024 * 1024,
   relationPairs: 32,
   visibleRelations: 16,
-  evaluationRows: 200,
-  evaluationBytes: 256 * 1024,
 };

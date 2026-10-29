@@ -1,46 +1,39 @@
 export type DataType = "text" | "integer";
 export type CellValue = string | null;
-export type Column = {
+export type ColumnSpec = {
   id: string;
   name: string;
-  index: number;
-  emptyCount: number;
-  distinctCount: number;
-  integerFailures: number;
-  formatChanges: number;
-  dataType?: DataType;
-  nullable?: boolean;
-  nullCount?: number;
+  dataType: DataType;
+  nullable: boolean;
+  generated?: "identity";
+  storage?: "reference" | "identity";
 };
-export type Table = {
+export type Column = Omit<ColumnSpec, "dataType" | "nullable"> &
+  Partial<Pick<ColumnSpec, "dataType" | "nullable">> & { index: number };
+export type TableSpec = {
   id: string;
-  caseId: string;
   name: string;
+  columns: ColumnSpec[];
+  primaryKey: string[];
+  uniqueKeys?: string[][];
+};
+export type Table = Omit<TableSpec, "columns" | "primaryKey"> & {
+  columns: Column[];
+  primaryKey?: string[];
+  caseId: string;
   fileName: string;
   bytes: number;
   rowCount: number;
-  columns: Column[];
-  primaryKey?: string[];
+  dataStatus?: "unverified";
   dataId?: string;
   dataBytes?: number;
 };
-export type Endpoint = {
-  tableId: string;
-  columnId: string;
-  columnIds?: string[];
-};
-export type Relation = {
+// One physical reference shape is shared by the model, SQL and both views.
+export type ForeignKeySpec = {
   id: string;
-  source: Endpoint;
-  target: Endpoint;
-  matched: number;
-  checked: number;
-  sourceDistinct: number;
-  cardinality: "1:1" | "N:1";
-  enforced?: boolean;
+  name?: string;
+  source_table: string;
+  source_columns: string[];
+  target_table: string;
+  target_columns: string[];
 };
-
-export const relationColumns = (
-  relation: Relation,
-  side: "source" | "target",
-) => relation[side].columnIds ?? [relation[side].columnId];

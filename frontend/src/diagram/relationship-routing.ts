@@ -1,5 +1,5 @@
 import type { XYPosition } from "@xyflow/react";
-import type { Relation } from "../model/schema.ts";
+import type { ForeignKeySpec } from "../model/schema.ts";
 
 export type RoutingTable = {
   id: string;
@@ -7,6 +7,7 @@ export type RoutingTable = {
   width: number;
   height: number;
   columns: string[];
+  portOffset?: number;
 };
 export type RelationshipRoute = {
   sourceSide: "left" | "right";
@@ -44,16 +45,16 @@ function crossesTable({ a, b }: Segment, table: RoutingTable) {
 // Route the complete set together: separate vertical tracks instead of drawing
 // independent smooth-step paths that accidentally look like a shared bus.
 export function routeRelationships(
-  relations: Relation[],
+  relations: ForeignKeySpec[],
   tables: RoutingTable[],
 ): Record<string, RelationshipRoute> {
   const result: Record<string, RelationshipRoute> = {};
   const used: Segment[] = [];
   const byId = new Map(tables.map((table) => [table.id, table]));
   const ordered = [...relations].sort((a, b) => {
-    const distance = (r: Relation) => {
-      const source = byId.get(r.source.tableId),
-        target = byId.get(r.target.tableId);
+    const distance = (r: ForeignKeySpec) => {
+      const source = byId.get(r.source_table),
+        target = byId.get(r.target_table);
       return source && target
         ? Math.abs(source.position.x - target.position.x)
         : 0;
@@ -61,11 +62,11 @@ export function routeRelationships(
     return distance(a) - distance(b) || a.id.localeCompare(b.id);
   });
   for (const relation of ordered) {
-    const source = byId.get(relation.source.tableId),
-      target = byId.get(relation.target.tableId);
+    const source = byId.get(relation.source_table),
+      target = byId.get(relation.target_table);
     if (!source || !target) continue;
-    const sourceIndex = source.columns.indexOf(relation.source.columnId),
-      targetIndex = target.columns.indexOf(relation.target.columnId);
+    const sourceIndex = source.columns.indexOf(relation.source_columns[0]),
+      targetIndex = target.columns.indexOf(relation.target_columns[0]);
     if (sourceIndex < 0 || targetIndex < 0) continue;
     const sourceSide =
       source.position.x + source.width <= target.position.x ? "right" : "left";
@@ -77,11 +78,11 @@ export function routeRelationships(
     const ts = sameColumn ? "right" : targetSide;
     const start = {
       x: source.position.x + (ss === "right" ? source.width + 3 : -3),
-      y: source.position.y + 63 + sourceIndex * 32,
+      y: source.position.y + (source.portOffset ?? 63) + sourceIndex * 32,
     };
     const end = {
       x: target.position.x + (ts === "right" ? target.width + 3 : -3),
-      y: target.position.y + 63 + targetIndex * 32,
+      y: target.position.y + (target.portOffset ?? 63) + targetIndex * 32,
     };
     const sd = ss === "right" ? 1 : -1,
       td = ts === "right" ? 1 : -1;

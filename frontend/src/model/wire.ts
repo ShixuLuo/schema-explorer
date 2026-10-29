@@ -1,60 +1,34 @@
-import type { Column, Relation, Table } from "./schema.ts";
-import { relationColumns } from "./schema.ts";
-import type { ColumnSpec, ForeignKeySpec, SchemaSpec } from "./operations.ts";
+import type { ColumnSpec, SchemaSpec } from "./operations.ts";
+import type { Equation } from "./presentation.ts";
+import type { Column, ForeignKeySpec, Table } from "./schema.ts";
 
 export const columnSpec = (column: Column): ColumnSpec => ({
   id: column.id,
   name: column.name,
-  data_type: column.dataType ?? "text",
+  dataType: column.dataType ?? "text",
   nullable: column.nullable ?? false,
-});
-export const foreignKeySpec = (r: Relation): ForeignKeySpec => ({
-  id: r.id,
-  source_table: r.source.tableId,
-  source_columns: relationColumns(r, "source"),
-  target_table: r.target.tableId,
-  target_columns: relationColumns(r, "target"),
+  ...(column.storage ? { storage: column.storage } : {}),
+  ...(column.generated ? { generated: column.generated } : {}),
 });
 export function schemaSpec(
-  tables: Table[],
-  relationships: Relation[],
+  tables: Pick<
+    Table,
+    "id" | "name" | "columns" | "primaryKey" | "uniqueKeys"
+  >[],
+  relationships: ForeignKeySpec[],
+  equations: Equation[] = [],
 ): SchemaSpec {
   return {
     tables: tables.map((t) => ({
       id: t.id,
       name: t.name,
       columns: t.columns.map(columnSpec),
-      primary_key: t.primaryKey ?? [],
+      primaryKey: t.primaryKey ?? [],
+      ...(t.uniqueKeys?.length
+        ? { uniqueKeys: structuredClone(t.uniqueKeys) }
+        : {}),
     })),
-    foreign_keys: relationships.filter((r) => r.enforced).map(foreignKeySpec),
+    foreign_keys: structuredClone(relationships),
+    ...(equations.length ? { equations: structuredClone(equations) } : {}),
   };
-}
-export function schemaRelations(
-  schema: SchemaSpec,
-  tables: Table[],
-  previous: Relation[],
-): Relation[] {
-  return schema.foreign_keys.map((fk) => {
-    const source = tables.find((t) => t.id === fk.source_table)!;
-    const old = previous.find((r) => r.id === fk.id);
-    return {
-      ...old,
-      id: fk.id,
-      source: {
-        tableId: fk.source_table,
-        columnId: fk.source_columns[0],
-        columnIds: fk.source_columns,
-      },
-      target: {
-        tableId: fk.target_table,
-        columnId: fk.target_columns[0],
-        columnIds: fk.target_columns,
-      },
-      checked: source.rowCount,
-      matched: source.rowCount,
-      sourceDistinct: old?.sourceDistinct ?? 0,
-      cardinality: old?.cardinality ?? "N:1",
-      enforced: true,
-    };
-  });
 }

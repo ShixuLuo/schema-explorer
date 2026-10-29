@@ -1,55 +1,70 @@
 import { useEffect, useState } from "react";
-import type { SqlBundle } from "../model/operations.ts";
+import type { CheckpointInfo, CheckpointRange } from "../model/workspace.ts";
+import { checkpointLabel, defaultCheckpointRange } from "../model/history.ts";
+import type { SelectedSql } from "../application/export.ts";
 import Icon from "../shared/Icon";
 
 export default function MigrationDialog({
   caseId,
+  checkpoints,
+  editingId,
+  initialRange,
   loadSql,
   onClose,
 }: {
   caseId: string;
-  loadSql: (caseId: string) => Promise<SqlBundle>;
+  checkpoints: CheckpointInfo[];
+  editingId?: string | null;
+  initialRange?: CheckpointRange;
+  loadSql: (caseId: string, range: CheckpointRange) => Promise<SelectedSql>;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<"changes" | "current" | "baseline">(
-    "changes",
+  const [from, setFrom] = useState(() =>
+    initialRange
+      ? initialRange.from
+      : (defaultCheckpointRange(checkpoints, editingId)?.from ?? null),
   );
-  const [sql, setSql] = useState<Record<string, string> | null>(null);
-  const [error, setError] = useState("");
+  const [sql, setSql] = useState<SelectedSql | null>(null),
+    [error, setError] = useState(""),
+    [copied, setCopied] = useState(false);
   useEffect(() => {
     let active = true;
-    void loadSql(caseId)
-      .then((sql) => {
-        if (active) setSql(sql);
+    setSql(null);
+    setError("");
+    setCopied(false);
+    if (!editingId) return;
+    loadSql(caseId, { from, to: editingId })
+      .then((value) => {
+        if (active) setSql(value);
       })
-      .catch((e) => {
-        if (active) setError(e.message);
+      .catch((error) => {
+        if (active) setError(error.message);
       });
     return () => {
       active = false;
     };
-  }, [caseId, loadSql]);
+  }, [caseId, from, editingId, loadSql]);
   useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        onClose();
+      }
     };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
   }, [onClose]);
-  const download = () => {
-    if (!sql) return;
-    const url = URL.createObjectURL(
-      new Blob([sql[mode]], { type: "application/sql;charset=utf-8" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `schema-${mode}.sql`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(sql?.migration ?? "");
+      setCopied(true);
+    } catch {
+      setError("Select the SQL and copy it with your keyboard.");
+    }
   };
   return (
     <div
-      className="modal-backdrop"
+      className="modal-backdrop sql-backdrop"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -61,7 +76,7 @@ export default function MigrationDialog({
         aria-label="Export SQL"
       >
         <div className="dialog-heading">
-          <h2>Export SQL</h2>
+          <h2>SQL</h2>
           <span className="sql-dialect">PostgreSQL</span>
           <button
             className="icon-button"
@@ -71,34 +86,51 @@ export default function MigrationDialog({
             <Icon name="close" size={16} />
           </button>
         </div>
-        <select
-          aria-label="SQL output"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as typeof mode)}
-        >
-          <option value="changes">Changes</option>
-          <option value="current">Current schema</option>
-          <option value="baseline">Baseline schema</option>
-        </select>
-        <p className="sql-note">
-          {mode === "changes" ? "Run against the baseline schema. " : ""}CSV
-          records are not included.
-        </p>
+        <div className="sql-range">
+          <label>
+            From
+            <select
+              aria-label="Export from checkpoint"
+              value={from ?? ""}
+              onChange={(e) => setFrom(e.target.value || null)}
+            >
+              <option value="">Start · empty schema</option>
+              {checkpoints.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {checkpointLabel(checkpoints, c.id, { editingId })}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Icon name="arrow" size={16} />
+          <span className="sql-editing-target">Editing</span>
+        </div>
         {error ? (
-          <p className="edit-error" role="alert">
+          <p role="alert" className="edit-error">
             {error}
           </p>
+        ) : sql && !sql.migration ? (
+          <p className="sql-unavailable" role="status">
+            {sql.reason}
+          </p>
         ) : (
-          <pre tabIndex={0} aria-label="Generated SQL">
-            {sql?.[mode] ?? "Generating SQL…"}
-          </pre>
+          <textarea
+            className="sql-output"
+            readOnly
+            aria-label="Generated SQL"
+            value={sql?.migration ?? "Generating SQL…"}
+          />
         )}
         <div className="dialog-actions">
           <button className="button" onClick={onClose}>
             Close
           </button>
-          <button className="button primary" disabled={!sql} onClick={download}>
-            Download SQL
+          <button
+            className="button primary"
+            disabled={!sql?.migration}
+            onClick={() => void copy()}
+          >
+            {copied ? "Copied" : "Copy SQL"}
           </button>
         </div>
       </section>

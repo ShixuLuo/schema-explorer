@@ -1,11 +1,13 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { restoreWorkspace } from "../model/workspace.ts";
-import type { UseCase } from "../model/workspace.ts";
+import {
+  restoreWorkspace,
+  type WorkspaceRecord,
+} from "../model/restore-workspace.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 async function imports(directory: string) {
@@ -62,6 +64,16 @@ test("model contracts do not depend on application, storage, or UI", async () =>
       `${edge.file} -> ${edge.target}`,
     );
 });
+test("presentation and migration calculus do not import database bindings or SQL", async () => {
+  for (const edge of (await imports("model")).filter(
+    (edge) => edge.file === "presentation.ts" || edge.file === "migration.ts",
+  ))
+    assert.equal(
+      edge.target,
+      "model/presentation.ts",
+      `${edge.file} -> ${edge.target}`,
+    );
+});
 test("application workflows depend only on their contracts and model", async () => {
   for (const edge of await imports("application"))
     assert.ok(
@@ -106,17 +118,18 @@ test("legacy workspace restoration is a model policy independent of storage", ()
         cardinality: "1:1",
       },
     ],
-    candidates: [],
-    dismissed: [],
-    analysis: { checkedPairs: 0, limited: false },
-  } as UseCase;
+  } as WorkspaceRecord;
   const current = restoreWorkspace(legacy);
-  assert.equal(current.modelVersion, 2);
+  assert.equal(current.modelVersion, 6);
   assert.equal(current.relationships.length, 0);
-  assert.equal(current.candidates[0].id, "old");
+  assert.equal("candidates" in current, false);
   assert.equal(legacy.relationships.length, 1);
   assert.throws(
-    () => restoreWorkspace({ ...current, modelVersion: 3 }),
+    () =>
+      restoreWorkspace({
+        ...current,
+        modelVersion: 7,
+      } as unknown as WorkspaceRecord),
     /newer version/,
   );
 });

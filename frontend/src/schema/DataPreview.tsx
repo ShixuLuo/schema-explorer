@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import type { CellValue, Table } from "../model/schema.ts";
+import type { CellValue } from "../model/schema.ts";
 import Icon from "../shared/Icon";
+import type { ViewTable } from "../model/comparison.ts";
 export default function DataPreview({
   table,
   readRows,
   columnId,
   onClose,
 }: {
-  table: Table;
+  table: ViewTable;
   readRows: (
-    table: Table,
+    table: ViewTable,
     offset: number,
     limit?: number,
   ) => Promise<CellValue[][]>;
@@ -25,6 +26,14 @@ export default function DataPreview({
   }, [table.id]);
   useEffect(() => {
     let active = true;
+    if (table.dataStatus === "unverified") {
+      setRows([]);
+      setLoading(false);
+      setError(
+        "Sample data has not been migrated to this schema. The original samples remain in the previous validated checkpoint.",
+      );
+      return;
+    }
     setLoading(true);
     setError("");
     void readRows(table, page * 50, 50)
@@ -40,7 +49,7 @@ export default function DataPreview({
     return () => {
       active = false;
     };
-  }, [table.id, table.dataId, page]);
+  }, [table, readRows, page]);
   return (
     <section className="data-panel" aria-label="Data preview">
       <div className="data-panel-header">
@@ -50,9 +59,9 @@ export default function DataPreview({
         </div>
         <div className="pagination">
           <span>
-            {table.rowCount ? page * 50 + 1 : 0}–
-            {Math.min((page + 1) * 50, table.rowCount)} of{" "}
-            {table.rowCount.toLocaleString()}
+            {table.dataStatus === "unverified"
+              ? "Data not validated"
+              : `${table.rowCount ? page * 50 + 1 : 0}–${Math.min((page + 1) * 50, table.rowCount)} of ${table.rowCount.toLocaleString()}`}
           </span>
           <button
             className="icon-button"

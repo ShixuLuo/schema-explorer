@@ -1,5 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 const paths: Record<string, ReactNode> = {
+  history: (
+    <>
+      <path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7M12 7v5l3 2" />
+    </>
+  ),
   undo: (
     <>
       <path d="M4 10h9a6 6 0 0 1 0 12M4 10l5-5M4 10l5 5" />
