@@ -2,6 +2,8 @@
 
 A browser-based schema editor with local CSV data, AI suggestions, CQL-backed migrations, and checkpoint history.
 
+[Open the demo](https://schema-explorer.luo.sx) · [Container deployment](deploy/README.md)
+
 ## Run locally
 
 Requires Node.js 22.12 or later. The CQL service additionally needs Rust/Cargo, JDK 21, and the official CQL jar; see [backend setup](backend/README.md).
@@ -37,6 +39,8 @@ Edits form a structural draft. **Schema diff**, **Before**, and **After** previe
 Run/apply is bound to the source revision, schemas, and data/result hashes. Staged results are published atomically; failures do not replace the source checkpoint.
 
 ## AI
+
+AI requests have a **five-minute total deadline**. Migration parameter generation, its one bounded repair, and CQL validation share that budget; CQL validator/execution limits remain separate. Server `[ai-timing]` lines use an internal trace ID and log only phase timing/status, attempt counts, and cancellation source—never prompts, payloads, samples, or credentials.
 
 **Suggestions** uses the native schema, bounded local profiles, and filtered samples. Guidance is optional. Generated actions preview on the graph; accept or reject each group before Commit. AI and manual edits use the same command implementation. The model cannot supply SQL, executable code, or arbitrary storage bindings.
 

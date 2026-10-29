@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew Schema Explorer HTTPS certificate
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/schema-explorer/renew-certificate.sh

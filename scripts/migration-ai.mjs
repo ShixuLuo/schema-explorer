@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { canonical } from "../frontend/src/ai/ai-proposal.ts";
-import { generateStructured } from "./ai-server.mjs";
+import { generateStructured, aiTiming, AI_REQUEST_TIMEOUT_MS } from "./ai-server.mjs";
 const hash = value => "sha256:" + createHash("sha256").update(canonical(value)).digest("hex");
 const fail = (message, status = 400) => Object.assign(Error(message), { status });
 const obj = properties => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
@@ -70,29 +70,39 @@ async function generateAttempt(request, options = {}) {
   return {holeId:change.holeId,value:checkValue(change.value)};
  });
  const assignments = [...request.assignments.filter(a=>!seen.has(a.holeId)),...changes];
- const validation = await (options.validateImpl ?? validateCandidate)(request,assignments,options);
+ const validationStarted = performance.now(); let validation, validationOutcome = "error";
+ aiTiming(options.traceId,"cql_validation","start",{operation:"migration-parameters",attempt:options.attempt});
+ try { validation = await (options.validateImpl ?? validateCandidate)(request,assignments,options); validationOutcome = "completed"; }
+ finally { aiTiming(options.traceId,"cql_validation","end",{operation:"migration-parameters",attempt:options.attempt,elapsedMs:performance.now()-validationStarted,status:validation?.status,outcome:options.signal?.aborted?"aborted":validationOutcome,aborted:!!options.signal?.aborted}); }
  if (!validation || typeof validation.status !== "string" || !Array.isArray(validation.holes)) throw fail("CQL returned no candidate status or typed holes.",502);
  return {protocol:request.protocol,requestId:request.requestId,base:request.base,title:value.title,questions:value.questions,assignments,changes,replacedHoleIds,missing:validation.holes.filter(h=>!h.filled),validation,origin:{kind:"live",label:"OpenAI gpt-6.1-sol · CQL validated parameter proposal"}};
 }
 
 export async function generateMigrationParameters(request, options = {}) {
  validateMigrationAiRequest(request);
- // The repair and both CQL validations share the original HTTP request deadline.
- const deadline = AbortSignal.timeout(60000);
+ // Model generation, the bounded repair, and CQL validation share five minutes total.
+ const started = performance.now(), traceId = options.traceId ?? randomUUID();
+ aiTiming(traceId,"migration_pipeline","start",{operation:"migration-parameters"});
+ const deadline = AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS);
  const signal = options.signal ? AbortSignal.any([options.signal,deadline]) : deadline;
- let candidate, validation, repair, attempts=0;
+ let candidate, validation, repair, attempts=0, outcome="error";
+ try {
  for (let attempt=0; attempt<2; attempt++) {
   signal.throwIfAborted(); attempts++;
+  const attemptStarted = performance.now(); let attemptStatus = "error";
+  aiTiming(traceId,"attempt","start",{operation:"migration-parameters",attempt:attempts});
   try {
-   candidate = await generateAttempt(request,{...options,signal,repair});
-   validation = candidate.validation;
+   candidate = await generateAttempt(request,{...options,signal,repair,traceId,operation:"migration-parameters",attempt:attempts});
+   validation = candidate.validation; attemptStatus = validation.status;
   } catch (error) {
    if (signal.aborted) throw error;
    validation = {status:"invalid",holes:request.holes,diagnostics:[{message:error.message}]};
-   candidate = undefined;
-  }
-  if (candidate && validation.status === "valid" && candidate.missing.length === 0 && candidate.questions.length === 0)
+   candidate = undefined; attemptStatus = "invalid";
+  } finally { aiTiming(traceId,"attempt","end",{operation:"migration-parameters",attempt:attempts,elapsedMs:performance.now()-attemptStarted,status:attemptStatus,outcome:signal.aborted?"aborted":"completed",aborted:signal.aborted}); }
+  if (candidate && validation.status === "valid" && candidate.missing.length === 0 && candidate.questions.length === 0) {
+   outcome="valid";
    return {...candidate,status:"valid",attempts,origin:{kind:"live",label:"OpenAI gpt-6.1-sol · CQL validated complete parameter proposal"}};
+  }
   if (candidate?.questions.length) break;
   repair = {candidate:candidate ?? null,validation,missing:(validation.holes ?? []).filter(h=>!h.filled),instruction:"Repair the full candidate relative to original assignments. Fill all required holes and resolve CQL diagnostics; ask the specific missing mapping decision only if genuinely ambiguous."};
  }
@@ -102,5 +112,7 @@ export async function generateMigrationParameters(request, options = {}) {
   ...(validation?.diagnostics ?? []).map(d=>d.message).filter(Boolean)
  ].slice(0,8);
  if (!questions.length) questions.push("CQL could not certify the target parameter mapping. Choose the source entity bindings and review the target assignments.");
+ outcome="needs-input";
  return {protocol:request.protocol,requestId:request.requestId,base:request.base,status:"needs-input",attempts,title:"Migration parameters need a mapping decision",questions,assignments:request.assignments,changes:[],replacedHoleIds:[],missing,validation:validation ?? {status:"incomplete",holes:request.holes},origin:{kind:"live",label:"OpenAI gpt-6.1-sol · candidate requires input"}};
+ } finally { aiTiming(traceId,"migration_pipeline","end",{operation:"migration-parameters",attempts,elapsedMs:performance.now()-started,outcome:signal.aborted?"aborted":outcome,aborted:signal.aborted,outerAborted:!!options.signal?.aborted,localDeadlineAborted:deadline.aborted}); }
 }

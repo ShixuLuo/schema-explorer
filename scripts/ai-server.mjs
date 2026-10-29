@@ -7,12 +7,23 @@ import {
   AI_CAPABILITY_CATALOGUE,
 } from "../frontend/src/ai/ai-capabilities.ts";
 import { readFile, stat } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { pathToFileURL, fileURLToPath } from "node:url";
 const MODEL = "gpt-6.1-sol",
   KEY_PATH =
     process.env.OPENAI_API_KEY_FILE ??
     fileURLToPath(new URL("../.local/llm-api-key", import.meta.url));
+// Five-minute total AI request budget, shared with migration repair attempts.
+export const AI_REQUEST_TIMEOUT_MS = 300000;
+export function aiTiming(traceId, stage, event, fields = {}) {
+  const safe = { trace: /^[a-f0-9-]{36}$/i.test(traceId ?? "") ? traceId : "local", stage, event };
+  for (const key of ["elapsedMs", "attempt", "attempts", "httpStatus"]) if (typeof fields[key] === "number" && Number.isFinite(fields[key])) safe[key] = Math.round(fields[key]);
+  for (const key of ["aborted", "outerAborted", "localDeadlineAborted"]) if (typeof fields[key] === "boolean") safe[key] = fields[key];
+  if (["schema-suggestions", "migration-parameters"].includes(fields.operation)) safe.operation = fields.operation;
+  for (const key of ["status", "outcome"]) if (["completed", "incomplete", "failed", "cancelled", "in_progress", "queued", "valid", "invalid", "needs-input", "unknown", "error", "aborted", "http-error", "network-error", "decode-error"].includes(fields[key])) safe[key] = fields[key];
+  if (["none", "request-deadline", "client-disconnected"].includes(fields.abortSource)) safe.abortSource = fields.abortSource;
+  console.info("[ai-timing]", JSON.stringify(safe));
+}
 const canonical = (x) =>
   Array.isArray(x)
     ? "[" + x.map(canonical).join(",") + "]"
@@ -181,7 +192,7 @@ export function parseResponse(body, request) {
 }
 export async function generate(
   request,
-  { signal, fetchImpl = fetch, keyPath = KEY_PATH } = {},
+  { signal, fetchImpl = fetch, keyPath = KEY_PATH, traceId = randomUUID(), operation = "schema-suggestions" } = {},
 ) {
   validateRequest(request);
   const payload = {
@@ -212,16 +223,19 @@ export async function generate(
       },
     },
   };
-  return parseResponse(await generateStructured(payload, { signal, fetchImpl, keyPath }), request);
+  return parseResponse(await generateStructured(payload, { signal, fetchImpl, keyPath, traceId, operation }), request);
 }
-export async function generateStructured(payload, {signal, fetchImpl = fetch, keyPath = KEY_PATH} = {}) {
+export async function generateStructured(payload, {signal, fetchImpl = fetch, keyPath = KEY_PATH, traceId = randomUUID(), operation, attempt} = {}) {
   const info = await stat(keyPath);
   if ((info.mode & 0o077) !== 0)
     throw fail("Server API key file permissions must be 0600.", 503);
   const key = (await readFile(keyPath, "utf8")).trim();
   if (!key) throw fail("Server API key is unavailable.", 503);
-  let response;
+  let response, outcome = "error", modelStatus = "unknown";
+  const started = performance.now();
+  aiTiming(traceId,"model_request","start",{operation,attempt});
   try {
+   try {
     response = await fetchImpl("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -231,7 +245,8 @@ export async function generateStructured(payload, {signal, fetchImpl = fetch, ke
       body: JSON.stringify(payload),
       signal,
     });
-  } catch {
+   } catch {
+    outcome = signal?.aborted ? "aborted" : "network-error";
     throw fail(
       signal?.aborted
         ? "AI request cancelled or timed out."
@@ -239,14 +254,22 @@ export async function generateStructured(payload, {signal, fetchImpl = fetch, ke
       502,
     );
   }
-  if (!response.ok)
+  if (!response.ok) {
+    outcome = "http-error";
     throw fail(
       "AI service unavailable (" +
         response.status +
         "). No automatic retry was made.",
       502,
     );
-  return response.json();
+  }
+  outcome = "decode-error";
+  const body = await response.json();
+  outcome = "completed"; modelStatus = body.status;
+  return body;
+  } finally {
+    aiTiming(traceId,"model_request","end",{operation,attempt,elapsedMs:performance.now()-started,httpStatus:response?.status,status:modelStatus,outcome,aborted:!!signal?.aborted});
+  }
 }
 export function createAiServer({ generateImpl = generate, migrationGenerateImpl } = {}) {
   let active = false;
@@ -291,10 +314,13 @@ export function createAiServer({ generateImpl = generate, migrationGenerateImpl 
       return;
     }
     active = true;
+    const traceId = randomUUID(), started = performance.now(), operation = req.url === "/api/ai/migration-parameters" ? "migration-parameters" : "schema-suggestions";
+    let outcome = "error", resultStatus = "unknown", abortSource = "none";
+    aiTiming(traceId,"http_request","start",{operation});
     const controller = new AbortController(),
-      timer = setTimeout(() => controller.abort(), 60000);
+      timer = setTimeout(() => { abortSource = "request-deadline"; aiTiming(traceId,"deadline","abort",{operation,elapsedMs:performance.now()-started,abortSource}); controller.abort(); }, AI_REQUEST_TIMEOUT_MS);
     res.on("close", () => {
-      if (!res.writableEnded) controller.abort();
+      if (!res.writableEnded) { if (!controller.signal.aborted) abortSource = "client-disconnected"; aiTiming(traceId,"http_request","abort",{operation,elapsedMs:performance.now()-started,abortSource}); controller.abort(); }
     });
     try {
       req.setEncoding("utf8");
@@ -313,10 +339,12 @@ export function createAiServer({ generateImpl = generate, migrationGenerateImpl 
       const migration = req.url === "/api/ai/migration-parameters";
       if (!migration) validateRequest(request);
       const impl = migration ? migrationGenerateImpl ?? (await import("./migration-ai.mjs")).generateMigrationParameters : generateImpl;
-      const result = await impl(request, { signal: controller.signal });
+      const result = await impl(request, { signal: controller.signal, traceId, operation });
+      outcome = controller.signal.aborted ? "aborted" : "completed"; resultStatus = result?.status;
       if (!controller.signal.aborted) send(200, result);
       else send(504, { error: "AI request cancelled or timed out." });
     } catch (error) {
+      outcome = controller.signal.aborted ? "aborted" : "error";
       send(error.status ?? 503, {
         error: error.status
           ? error.message
@@ -325,6 +353,7 @@ export function createAiServer({ generateImpl = generate, migrationGenerateImpl 
     } finally {
       clearTimeout(timer);
       active = false;
+      aiTiming(traceId,"http_request","end",{operation,elapsedMs:performance.now()-started,outcome,status:resultStatus,aborted:controller.signal.aborted,abortSource});
     }
   });
 }

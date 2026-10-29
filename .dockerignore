@@ -1,0 +1,14 @@
+.git
+.local
+.env
+.env.*
+**/node_modules
+**/target
+**/build
+dist
+.vite-cache
+.DS_Store
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*results.json
