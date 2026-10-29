@@ -1,6 +1,5 @@
 import { useId, type ReactNode } from "react";
 import type { EditSummary } from "../application/preview.ts";
-import { inferPlanGroups } from "../application/preview.ts";
 import type { ComparisonMode } from "../model/comparison.ts";
 export default function GraphPreviewControls({
   summary,
@@ -32,34 +31,13 @@ export default function GraphPreviewControls({
   details?: ReactNode;
 }) {
   const tooltipId = useId();
-  const groups = summary.plan ?? inferPlanGroups(summary.operations);
-  const pending = (summary.pendingParameters ?? []).map(
-    ({ index, message }) => {
-      const group = groups.findIndex(
-        (group) => index >= group.start && index < group.start + group.count,
-      );
-      const op = summary.operations[index];
-      const table =
-        "table_id" in op
-          ? summary.comparison.after.tables.find((t) => t.id === op.table_id)
-          : undefined;
-      const label =
-        op.op === "add_attribute"
-          ? `${table?.name ?? op.table_id}.${op.column.name}`
-          : undefined;
-      return `Action ${group < 0 ? index + 1 : group + 1}${label ? ` · ${label}` : ""}: ${message}`;
-    },
-  );
   const commitReason =
     commitDisabledReason ??
     (working
       ? "Wait for the current operation to finish."
       : disabled
         ? "Finish the open editor or precheck dialog first."
-        : pending.length
-          ? pending.join("\n") +
-            "\nOpen Details → Actions to configure these steps."
-          : undefined);
+        : undefined);
   return (
     <div className="draft-controls-shell">
       {!hidePlan && (
@@ -95,12 +73,6 @@ export default function GraphPreviewControls({
           {summary.operations.length}{" "}
           {summary.operations.length === 1 ? "change" : "changes"}
         </strong>
-        {!!summary.pendingParameters?.length && (
-          <span className="schema-only-badge">Configure actions</span>
-        )}
-        {summary.dataValidation === "unverified" && (
-          <span className="schema-only-badge">Data not validated</span>
-        )}
         <select
           aria-label="Preview view"
           value={mode}

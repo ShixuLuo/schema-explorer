@@ -1,131 +1,26 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
-type Context = {
-  draft: boolean;
-  configured: boolean;
-  editing: boolean;
-  busy: boolean;
-  committed: boolean;
-  showHistory: boolean;
-  showSql: boolean;
-};
-type Step = {
-  id: string;
-  title: string;
-  body: string;
-  target: string;
-  click?: boolean;
-  next?: boolean;
-  ready?: (context: Context) => boolean;
-};
-// Targets refer to the existing editor controls. No tutorial action mutates the model.
-const steps: Step[] = [
-  {
-    id: "object",
-    title: "Objects",
-    body: "An object represents a table. Click Customer to continue.",
-    target: '[aria-label="Select entity Customer"]',
-    click: true,
-  },
-  {
-    id: "attribute",
-    title: "Attributes",
-    body: "The name arrow assigns a Text value to each Customer. Click name to continue.",
-    target: '[aria-label="Select arrow Customer.name"]',
-    click: true,
-  },
-  {
-    id: "foreign-key",
-    title: "Foreign keys",
-    body: "Each Order points to a Customer. Click the customer arrow to continue.",
-    target: '[aria-label="Select arrow Order.customer"]',
-    click: true,
-  },
-  {
-    id: "add",
-    title: "Create an object",
-    body: "Click + to open the canvas menu.",
-    target: ".floating-add-trigger",
-    click: true,
-  },
-  {
-    id: "object-menu",
-    title: "Choose Object",
-    body: "Click Object to open the creation form.",
-    target: '.floating-add-menu [role="menuitem"]',
-    click: true,
-  },
-  {
-    id: "create",
-    title: "Create Shipment",
-    body: "Enter Shipment as the name, then click Create. Keep the default Integer primary key.",
-    target: ".object-creator",
-    ready: (c) => c.draft && !c.editing && !c.busy,
-  },
-  {
-    id: "migration",
-    title: "Choose a migration",
-    body: "Choose Σ to create an empty Shipment object. This resolves the existing draft action before Commit.",
-    target: '[data-method="sigma"]',
-    ready: (c) => c.configured && !c.busy,
-  },
-  {
-    id: "commit",
-    title: "Commit",
-    body: "Review the draft, then Commit to save a checkpoint.",
-    target: ".commit-control .button.primary",
-    ready: (c) => c.committed && !c.busy,
-  },
-  {
-    id: "history",
-    title: "History",
-    body: "Open History to see the sample and your new checkpoint.",
-    target: '[aria-label="Open history"]',
-    ready: (c) => c.showHistory,
-  },
-  {
-    id: "history-graph",
-    title: "A new checkpoint",
-    body: "The sample is the parent of Add object Shipment. Follow their connecting line, then click Next. Both checkpoints are retained.",
-    target: ".history-event",
-    next: true,
-  },
-  {
-    id: "history-current",
-    title: "Editing is your position",
-    body: "Editing marks the checkpoint shown in the editor. Click this checkpoint to inspect its details.",
-    target: '[data-tutorial="editing-checkpoint"]',
-    click: true,
-  },
-  {
-    id: "history-details",
-    title: "Checkpoint details",
-    body: "This checkpoint records your create operation and its parent. Review these details, then click Next. Continue from here would restore it; leave that unchanged.",
-    target: '[data-tutorial="checkpoint-details"]',
-    next: true,
-  },
-  {
-    id: "history-close",
-    title: "Checkpoints",
-    body: "Editing marks the current checkpoint. Close History to continue.",
-    target: '[aria-label="Close history"]',
-    ready: (c) => !c.showHistory,
-  },
-  {
-    id: "sql",
-    title: "Migrate / Export SQL",
-    body: "Open Export SQL to review the recorded migration.",
-    target: '[data-tutorial="export-sql"]',
-    ready: (c) => c.showSql,
-  },
-  {
-    id: "done",
-    title: "Ready to explore",
-    body: "You have created and committed a model, inspected its history, and generated SQL. Keep exploring this sample or return home.",
-    target: ".migration-dialog",
-  },
-];
-type Rect = { left: number; top: number; width: number; height: number };
+import { tutorialChapters, type TutorialContext as Context } from "../tutorial/lessons.ts";
+
+type Box = { left: number; top: number; width: number; height: number };
+type Rect = Box & { fallback?: boolean; popoverLeft?: number; popoverTop?: number };
+function placePopover(target: Box, width: number, height: number, obstacles: Box[]) {
+  const vw = window.innerWidth, vh = window.innerHeight, gap = 18, inset = 12;
+  const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.left+a.width,b.left+b.width)-Math.max(a.left,b.left)) * Math.max(0,Math.min(a.top+a.height,b.top+b.height)-Math.max(a.top,b.top));
+  const candidates = [
+    [target.left+target.width+gap,target.top], [target.left-width-gap,target.top],
+    [target.left,target.top-height-gap], [target.left,target.top+target.height+gap],
+    [target.left+target.width+gap,target.top+(target.height-height)/2],
+    [target.left-width-gap,target.top+(target.height-height)/2],
+    [inset,60], [vw-width-inset,60], [inset,vh-height-inset], [vw-width-inset,vh-height-inset],
+  ].map(([left,top]) => ({left:Math.max(inset,Math.min(left,vw-width-inset)),top:Math.max(inset,Math.min(top,vh-height-inset)),width,height}));
+  // Large canvas targets contain useful empty space. Avoid their actual controls
+  // and nodes; for a small target, also keep the whole highlighted target clear.
+  const protectTarget = target.width*target.height < vw*vh*0.55;
+  const score = (candidate: Box) => obstacles.reduce((sum,item)=>sum+overlap(candidate,item),0) + (protectTarget?overlap(candidate,target)*8:0) + Math.hypot(candidate.left-target.left,candidate.top-target.top)*(protectTarget ? 50 : 0.02);
+  return candidates.reduce((best,candidate)=>score(candidate)<score(best)?candidate:best);
+}
 export default function Tutorial(
   props: Context & {
     onExit: () => void;
@@ -134,7 +29,15 @@ export default function Tutorial(
     onHome: () => void;
   },
 ) {
-  const [index, setIndex] = useState(0);
+  const [chapter, setChapter] = useState(0);
+  const [position, setPosition] = useState<number | string>(0);
+  const steps = tutorialChapters[chapter].steps;
+  // Numeric state from an already-open guide survives this upgrade; future moves use stable IDs.
+  const index = typeof position === "number" ? Math.min(position, steps.length - 1) : Math.max(0, steps.findIndex(item => item.id === position));
+  const advance = () => {
+    if (index < steps.length - 1) setPosition(steps[index + 1].id);
+    else if (chapter < tutorialChapters.length - 1) { setChapter(chapter + 1); setPosition(tutorialChapters[chapter + 1].steps[0].id); }
+  };
   const popover = useRef<HTMLElement>(null);
   const [popoverHeight, setPopoverHeight] = useState(0);
   const [viewport, setViewport] = useState({
@@ -145,7 +48,10 @@ export default function Tutorial(
     const element = popover.current;
     if (!element) return;
     const observer = new ResizeObserver(() =>
-      setPopoverHeight(element.getBoundingClientRect().height),
+      {
+        const height = element.getBoundingClientRect().height;
+        setPopoverHeight(height);
+      },
     );
     observer.observe(element);
     const resize = () =>
@@ -159,27 +65,44 @@ export default function Tutorial(
   const [rect, setRect] = useState<Rect>();
   const step = steps[index];
   useEffect(() => {
-    if (step.ready?.(props)) setIndex((i) => Math.min(i + 1, steps.length - 1));
+    if (step.ready?.(props)) advance();
   }, [
     step,
     props.draft,
-    props.configured,
     props.editing,
     props.busy,
-    props.committed,
-    props.showHistory,
-    props.showSql,
+    props.migrationOpen,
+    props.migrationStage,
   ]);
   useEffect(() => {
+    let sawRequiredElement = false;
+    const targets = () => [...document.querySelectorAll<HTMLElement>(step.target)].filter(element =>
+      element.getBoundingClientRect().width > 0 && (!step.targetText || element.textContent?.trim() === step.targetText));
     const measure = () => {
-      const target = document.querySelector<HTMLElement>(step.target);
+      if (step.complete?.every(rule => {
+        const elements = document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(rule.selector);
+        if (rule.minCount !== undefined && elements.length < rule.minCount) return false;
+        const element = rule.textIncludes === undefined ? elements[0] : [...elements].find(item => item.textContent?.includes(rule.textIncludes!));
+        if (rule.absent) return !element;
+        if (!element) return false;
+        if (rule.value !== undefined && element.value !== rule.value) return false;
+        if (rule.selectedText !== undefined && (!(element instanceof HTMLSelectElement) || element.selectedOptions[0]?.textContent?.trim() !== rule.selectedText)) return false;
+        return true;
+      })) { advance(); return; }
+      if (step.disappeared) {
+        const present = !!document.querySelector(step.disappeared);
+        if (present) sawRequiredElement = true;
+        else if (sawRequiredElement) { advance(); return; }
+      }
+      if (step.appeared && document.querySelector(step.appeared)) { advance(); return; }
+      const matches = targets();
+      const target = matches[0];
       if (!target) {
         setRect(undefined);
         return;
       }
-      const bounds = [
-        ...document.querySelectorAll<HTMLElement>(step.target),
-      ].map((element) => element.getBoundingClientRect());
+      const fallback = !!step.fallback && !!document.querySelector(step.fallback.selector);
+      const bounds = matches.map((element) => element.getBoundingClientRect());
       const r = {
         left: Math.min(...bounds.map((item) => item.left)),
         top: Math.min(...bounds.map((item) => item.top)),
@@ -190,29 +113,21 @@ export default function Tutorial(
       };
       r.width = r.right - r.left;
       r.height = r.bottom - r.top;
-      setRect((old) =>
-        old &&
-        Math.abs(old.left - r.left + 5) < 1 &&
-        Math.abs(old.top - r.top + 5) < 1 &&
-        old.width === r.width + 10 &&
-        old.height === r.height + 10
-          ? old
-          : {
-              left: Math.max(0, r.left - 5),
-              top: Math.max(0, r.top - 5),
-              width: r.width + 10,
-              height: r.height + 10,
-            },
-      );
+      const targetRect = {left:Math.max(0,r.left-5),top:Math.max(0,r.top-5),width:r.width+10,height:r.height+10};
+      const obstacles = [...document.querySelectorAll<HTMLElement>("button, input, select, textarea, .react-flow__node, .category-edge-label, .data-panel, .history-node-menu, .relation-composer, .arrow-creator, .object-creator, .migration-ai-panel, .ai-experiment-panel")]
+        .filter(element=>!element.closest(".tutorial-layer") && getComputedStyle(element).visibility!=="hidden")
+        .map(element=>element.getBoundingClientRect()).filter(item=>item.width>0&&item.height>0&&item.bottom>0&&item.top<window.innerHeight);
+      const placement = placePopover(targetRect, Math.min(300,window.innerWidth-24), popover.current?.getBoundingClientRect().height || 240, obstacles);
+      const next = {...targetRect,fallback,popoverLeft:placement.left,popoverTop:placement.top};
+      setRect(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
     };
     measure();
     const timer = window.setInterval(measure, 100);
     const click = (event: MouseEvent) => {
       if (!step.click) return;
-      const target = document.querySelector(step.target);
-      if (target?.contains(event.target as Node))
+      if (targets().some(target => target.contains(event.target as Node)))
         window.setTimeout(
-          () => setIndex((i) => Math.min(i + 1, steps.length - 1)),
+          () => advance(),
           0,
         );
     };
@@ -222,28 +137,12 @@ export default function Tutorial(
       document.removeEventListener("click", click, true);
     };
   }, [step]);
-  const width = Math.min(280, viewport.width - 24),
-    height = popoverHeight,
-    gap = 18;
-  let left = 20,
-    top = 85;
-  if (rect) {
-    if (rect.left + rect.width + gap + width < viewport.width) {
-      left = rect.left + rect.width + gap;
-      top = rect.top;
-    } else if (rect.left > width + gap) {
-      left = rect.left - width - gap;
-      top = rect.top;
-    } else {
-      left = Math.max(12, rect.left);
-      top = rect.top + rect.height + gap;
-    }
-    top = Math.max(12, Math.min(top, viewport.height - height - 12));
-    left = Math.min(left, viewport.width - width - 12);
-  }
-  return (
+  const body = step.fallback && rect?.fallback ? step.fallback.body : step.body;
+  return createPortal(
     <div className="tutorial-layer" aria-label="Tutorial guide">
-      {rect ? (
+      {step.presentation === "workspace" ? (
+        <div className="tutorial-shade" style={{ inset: 0, background: "rgba(16, 21, 27, 0.08)", pointerEvents: "none" }} />
+      ) : rect ? (
         <>
           <div
             className="tutorial-shade"
@@ -271,7 +170,7 @@ export default function Tutorial(
             className="tutorial-shade"
             style={{ inset: `${rect.top + rect.height}px 0 0 0` }}
           />
-          <div className="tutorial-spotlight" style={rect} />
+          <div className="tutorial-spotlight" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} />
         </>
       ) : (
         <div className="tutorial-shade" style={{ inset: 0 }} />
@@ -279,27 +178,30 @@ export default function Tutorial(
       <section
         ref={popover}
         className="tutorial-popover"
-        style={{ left, top, width }}
+        style={{ left: rect?.popoverLeft ?? 16, top: rect?.popoverTop ?? Math.max(12, (viewport.height - popoverHeight) / 2), width: Math.min(300,viewport.width-24) }}
         aria-live="polite"
       >
         <div className="tutorial-caption">
-          Tutorial · {index + 1} / {steps.length}
+          {tutorialChapters[chapter].title} · {index + 1} / {steps.length}
         </div>
+        <nav className="tutorial-chapters" aria-label="Tutorial chapters">
+          {tutorialChapters.map((item, position) => <button key={item.id} aria-current={position === chapter ? "step" : undefined} disabled={props.busy} onClick={() => { setChapter(position); setPosition(tutorialChapters[position].steps[0].id); }}>{position + 1}. {item.title}</button>)}
+        </nav>
         <h2>{step.title}</h2>
         <p>
           {rect
-            ? step.body
-                .split(/\b(click)\b/gi)
+            ? body
+                .split(/(\*\*.*?\*\*)/g)
                 .map((part, index) =>
-                  part.toLowerCase() === "click" ? (
-                    <strong key={index}>{part}</strong>
+                  part.startsWith("**") ? (
+                    <strong key={index}>{part.slice(2, -2)}</strong>
                   ) : (
                     part
                   ),
                 )
             : props.busy
               ? "Preparing…"
-              : "Waiting for the editor…"}
+              : body}
         </p>
         <div className="tutorial-actions">
           {step.id === "done" ? (
@@ -313,12 +215,12 @@ export default function Tutorial(
             </>
           ) : (
             <>
-              {step.next && (
+              {(step.next || (!rect && !step.complete)) && (
                 <button
                   className="button primary"
-                  onClick={() => setIndex((i) => i + 1)}
+                  onClick={advance}
                 >
-                  Next
+                  {step.next || "Continue"}
                 </button>
               )}
               <button
@@ -339,6 +241,7 @@ export default function Tutorial(
           )}
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

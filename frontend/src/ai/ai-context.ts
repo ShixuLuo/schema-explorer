@@ -41,6 +41,7 @@ export type AiContext = {
     orphanReferenceIds: string[];
   }[];
   excludedColumnIds: string[];
+  unavailableColumnIds: string[];
   scanLimit: number;
   sampleLimit: number;
   warnings: string[];
@@ -91,6 +92,16 @@ export async function prepareAiContext(
     data.set(table.id, rows);
     complete.set(table.id, ended && rows.length === table.rowCount);
   }
+  // Stable IDs preserve source evidence through renames. New or moved fields
+  // have no target data until a migration has actually run.
+  const unavailableColumnIds = schema.tables.flatMap((t) => {
+    const source = snapshot.tables.find((old) => old.id === t.id);
+    return t.columns
+      .filter((c) => !source?.columns.some((old) => old.id === c.id))
+      .map((c) => c.id);
+  });
+  const available = (ids: string[]) =>
+    ids.every((id) => !unavailableColumnIds.includes(id));
   const excludedColumnIds = [
     ...new Set(
       [...schema.tables, ...snapshot.tables].flatMap((t) =>
@@ -108,22 +119,25 @@ export async function prepareAiContext(
       precision: complete.get(t.id)
         ? ("exact" as const)
         : ("estimate" as const),
-      columns: t.columns.map((c, i) => {
+      columns: t.columns.flatMap((c, i) => {
+        if (!available([c.id])) return [];
         const values = rows.map((r) => r[i] ?? null),
           nonNull = values.filter((v) => v !== null),
           distinctCount = new Set(nonNull).size;
-        return {
-          columnId: c.id,
-          nullCount: values.length - nonNull.length,
-          distinctCount,
-          duplicateCount: nonNull.length - distinctCount,
-          typeFailures: nonNull.filter(
-            (value) => !validScalar(c.dataType ?? "text", value),
-          ).length,
-        };
+        return [
+          {
+            columnId: c.id,
+            nullCount: values.length - nonNull.length,
+            distinctCount,
+            duplicateCount: nonNull.length - distinctCount,
+            typeFailures: nonNull.filter(
+              (value) => !validScalar(c.dataType ?? "text", value),
+            ).length,
+          },
+        ];
       }),
       keys: [t.primaryKey, ...(t.uniqueKeys ?? [])]
-        .filter((k) => k.length)
+        .filter((k) => k.length && available(k))
         .map((ids) => {
           const indices = ids.map((id) =>
               t.columns.findIndex((c) => c.id === id),
@@ -144,22 +158,24 @@ export async function prepareAiContext(
         }),
     };
   });
-  const referenceMaps = schema.foreign_keys.map((f) => {
-    const parent = schema.tables.find((t) => t.id === f.target_table)!,
-      child = schema.tables.find((t) => t.id === f.source_table)!;
-    const parentIndices = f.target_columns.map((id) =>
-        parent.columns.findIndex((c) => c.id === id),
-      ),
-      childIndices = f.source_columns.map((id) =>
-        child.columns.findIndex((c) => c.id === id),
-      );
-    const parents = new Map<string, number>();
-    (data.get(parent.id) ?? []).forEach((r, i) => {
-      if (!parentIndices.some((j) => r[j] == null))
-        parents.set(key(r, parentIndices), i);
+  const referenceMaps = schema.foreign_keys
+    .filter((f) => available([...f.source_columns, ...f.target_columns]))
+    .map((f) => {
+      const parent = schema.tables.find((t) => t.id === f.target_table)!,
+        child = schema.tables.find((t) => t.id === f.source_table)!;
+      const parentIndices = f.target_columns.map((id) =>
+          parent.columns.findIndex((c) => c.id === id),
+        ),
+        childIndices = f.source_columns.map((id) =>
+          child.columns.findIndex((c) => c.id === id),
+        );
+      const parents = new Map<string, number>();
+      (data.get(parent.id) ?? []).forEach((r, i) => {
+        if (!parentIndices.some((j) => r[j] == null))
+          parents.set(key(r, parentIndices), i);
+      });
+      return { f, childIndices, parents };
     });
-    return { f, childIndices, parents };
-  });
   const relationships = referenceMaps.map(({ f, childIndices, parents }) => {
     const rows = data.get(f.source_table) ?? [];
     let nonNullRows = 0,
@@ -217,7 +233,7 @@ export async function prepareAiContext(
     };
     samples.push(sample);
     table.columns.forEach((c, i) => {
-      if (excludedColumnIds.includes(c.id)) return;
+      if (excludedColumnIds.includes(c.id) || !available([c.id])) return;
       const value = row[i] ?? null;
       sample.values[c.id] =
         value !== null && linkIds.has(c.id)
@@ -290,9 +306,20 @@ export async function prepareAiContext(
     relationships,
     samples,
     excludedColumnIds,
+    unavailableColumnIds,
     scanLimit,
     sampleLimit,
     warnings: [
+      ...(options.schema
+        ? [
+            "Profiles and samples describe committed source rows mapped by stable table and column IDs; target draft migrations have not run.",
+          ]
+        : []),
+      ...(unavailableColumnIds.length
+        ? [
+            `No data is available for draft columns: ${unavailableColumnIds.join(", ")}. They are excluded from profiles, samples, keys, and references.`,
+          ]
+        : []),
       "Diagnostic samples are biased; they do not prove constraints or prevalence.",
       "Sensitive columns are excluded; relationship carriers use consistent request-local pseudonyms.",
       ...(profiles.some((p) => p.precision === "estimate")

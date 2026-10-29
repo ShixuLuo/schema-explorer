@@ -10,6 +10,7 @@ import type { Equation, Path } from "../model/presentation.ts";
 import { endpoint } from "../model/presentation.ts";
 import {
   fieldArrowOperations,
+  defaultArrowChoice,
   type ReferenceKeyChoice,
 } from "./foreign-key-plan.ts";
 export function replaceArrowOperations(
@@ -18,9 +19,10 @@ export function replaceArrowOperations(
   sourceId: string,
   targetId: string,
   name: string,
-  choice: ReferenceKeyChoice = {},
+  choice?: ReferenceKeyChoice,
   uuid: () => string = () => crypto.randomUUID(),
 ) {
+  choice ??= defaultArrowChoice(original,sourceId,targetId,arrowId);
   const equations = original.equations ?? [],
     old = databasePresentation(original).arrows.find((a) => a.id === arrowId);
   if (!old) throw new Error("This arrow no longer exists.");
@@ -35,7 +37,8 @@ export function replaceArrowOperations(
     operations.push(op);
   };
   const sameSource = sourceId === old.source,
-    isType = targetId.startsWith("type:");
+    isType = targetId.startsWith("type:"),
+    retainColumn=!!column&&sameSource&&!isType&&(choice.sourceColumns??[]).includes(column.id);
   if (ref) {
     if (
       sameSource &&
@@ -75,7 +78,7 @@ export function replaceArrowOperations(
           column_id: column.id,
           new_name: name,
         });
-    } else
+    } else if(!retainColumn)
       apply({ op: "drop_column", table_id: owner.id, column_id: column.id });
   }
   const source = schema.tables.find((t) => t.id === sourceId);
@@ -122,6 +125,7 @@ export function replaceArrowOperations(
         next.foreign_key.id = ref.id;
       replacementId = referenceId(next.foreign_key.id);
     }
+    if(retainColumn&&column)for(const operation of created)if(operation.op==='add_foreign_key')operation.storage_columns=[...new Set([...(operation.storage_columns??[]),column.id])];
     created.forEach(apply);
   }
   const after = databasePresentation(schema),

@@ -20,7 +20,6 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type ReferenceKeyChoice } from "../application/foreign-key-plan.ts";
 import { comparisonView } from "../model/comparison.ts";
 import {
   attributeId,
@@ -206,7 +205,7 @@ export default function CategoryDiagram(props: DiagramProps) {
   const perform = (ops: Operation[]) => {
     void run(ops).catch(() => {});
   };
-  const createArrow = async (name: string, choice?: ReferenceKeyChoice) => {
+  const createArrow = async (name: string) => {
     if (!source || !pending?.target)
       throw new Error("Choose source and target first.");
     const schema = schemaSpec(tables, useCase.relationships, useCase.equations);
@@ -219,14 +218,12 @@ export default function CategoryDiagram(props: DiagramProps) {
             sourceId: source,
             targetId: pending.target,
             name,
-            choice: choice ?? {},
           }
         : {
             kind: "create_arrow",
             sourceId: source,
             targetId: pending.target,
             name,
-            choice: choice ?? {},
           },
     );
     if (ops.length)
@@ -547,12 +544,6 @@ export default function CategoryDiagram(props: DiagramProps) {
       ? editedSource?.columns.find((c) => c.id === editedRef.source_columns[0])
           ?.name
       : editedArrow?.label;
-  const editedChoice = editedRef
-    ? {
-        targetColumns: editedRef.target_columns,
-        sourceColumns: editedRef.source_columns,
-      }
-    : undefined;
   const selectedArrow = presentation.arrows.find((a) => a.id === selection),
     ref = displayed.relationships.find((r) => referenceId(r.id) === selection);
   const binding = ref
@@ -645,12 +636,6 @@ export default function CategoryDiagram(props: DiagramProps) {
               key={editingArrow ?? "new"}
               editing={!!editingArrow}
               initialName={editedName}
-              initialChoice={
-                source === editedArrow?.source &&
-                pending?.target === editedArrow?.target
-                  ? editedChoice
-                  : undefined
-              }
               tables={tables}
               sourceId={source}
               targetId={pending?.target}

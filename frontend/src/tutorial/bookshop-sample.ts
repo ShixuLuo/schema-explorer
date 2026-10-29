@@ -22,7 +22,8 @@ export async function createTutorialSample(store: WorkspaceStore) {
         {
           id: customerId,
           name: "id",
-          dataType: "integer" as const,
+          storage: "identity" as const,
+          dataType: "text" as const,
           nullable: false,
           index: 0,
         },
@@ -36,8 +37,8 @@ export async function createTutorialSample(store: WorkspaceStore) {
       ],
       primaryKey: [customerId],
       rows: [
-        ["1", "Ada"],
-        ["2", "Lin"],
+        ["C001", "Ada Chen"],
+        ["C002", "Lin Park"],
       ],
     },
     {
@@ -47,14 +48,15 @@ export async function createTutorialSample(store: WorkspaceStore) {
         {
           id: orderId,
           name: "id",
-          dataType: "integer" as const,
+          storage: "identity" as const,
+          dataType: "text" as const,
           nullable: false,
           index: 0,
         },
         {
           id: orderCustomer,
           name: "customer_id",
-          dataType: "integer" as const,
+          dataType: "text" as const,
           nullable: false,
           index: 1,
         },
@@ -67,7 +69,7 @@ export async function createTutorialSample(store: WorkspaceStore) {
         },
       ],
       primaryKey: [orderId],
-      rows: [["101", "1", "2599"]],
+      rows: [["O101", "C001", "2599"], ["O102", "C002", "1800"], ["O103", "C001", "4200"]],
     },
   ];
   try {
@@ -84,25 +86,16 @@ export async function createTutorialSample(store: WorkspaceStore) {
       await writer.append(rows);
       staged.push(await writer.finish(table));
     }
-    const foreignKey = {
-      id: crypto.randomUUID(),
-      name: "customer",
-      source_table: order,
-      source_columns: [orderCustomer],
-      target_table: customer,
-      target_columns: [customerId],
-    };
-    const specs = schemaSpec(staged, [foreignKey]);
+    const specs = schemaSpec(staged, []);
     await store.commit(useCase.id, 0, {
       kind: "checkpoint",
       description: "Tutorial sample",
-      state: { tables: staged, relationships: [foreignKey], equations: [] },
+      state: { tables: staged, relationships: [], equations: [] },
       operations: [
         ...specs.tables.map((table) => ({
           op: "create_table" as const,
           table,
         })),
-        { op: "add_foreign_key", table_id: order, foreign_key: foreignKey },
       ],
     });
     await store.patchInfo(useCase.id, { name: "Bookshop · Tutorial" });

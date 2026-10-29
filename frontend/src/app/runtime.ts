@@ -162,3 +162,14 @@ export const cqlLive = {
   apply: (caseId: string, result: LiveResult, contract: Contract) =>
     applyLive(store, caseId, result, contract),
 };
+
+import { runDraftMigration, applyDraftMigration } from "../application/draft-migration.ts";
+import type { SchemaSpec } from "../model/operations.ts";
+import type { Assignment } from "../migration/migration-client.ts";
+export const migrationWorkflow = {
+  async migrate(caseId: string, revision: number, source: SchemaSpec, target: SchemaSpec, assignments: Assignment[], progress: (message: string) => void) {
+    const controller = new AbortController();
+    const prepared = await runDraftMigration(store, caseId, revision, source, target, assignments, progress, controller.signal);
+    await applyDraftMigration(store, prepared);
+  },
+};

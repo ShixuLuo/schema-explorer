@@ -17,14 +17,14 @@ export type HumanCommand = (
       sourceId: string;
       targetId: string;
       name: string;
-      choice: ReferenceKeyChoice;
+      choice?: ReferenceKeyChoice;
     }
   | {
       kind: "create_arrow";
       sourceId: string;
       targetId: string;
       name: string;
-      choice: ReferenceKeyChoice;
+      choice?: ReferenceKeyChoice;
     }
   | { kind: "create_object"; name: string; keyName: string }
   | { kind: "rename_object"; objectId: string; name: string }

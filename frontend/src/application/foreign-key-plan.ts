@@ -8,14 +8,25 @@ export type ReferenceKeyChoice = {
   sourceColumns?: string[];
   method?: "sigma" | "pi";
 };
+export function defaultArrowChoice(schema:SchemaSpec,sourceId:string,targetId:string,arrowId?:string):ReferenceKeyChoice {
+  const target=schema.tables.find(t=>t.id===targetId);
+  if(!target)return {};
+  const reference=arrowId?.startsWith('reference:')?schema.foreign_keys.find(f=>'reference:'+f.id===arrowId):undefined;
+  if(reference&&reference.source_table===sourceId&&reference.target_table===targetId)return {targetColumns:[...reference.target_columns],sourceColumns:[...reference.source_columns]};
+  const source=schema.tables.find(t=>t.id===sourceId),column=source?.columns.find(c=>'attribute:'+c.id===arrowId);
+  const keys=target.primaryKey??[],key=keys.length===1?target.columns.find(c=>c.id===keys[0]):undefined;
+  const retain=column&&key&&!column.generated&&!column.storage&&(column.dataType??'text')===(key.dataType??'text');
+  return {targetColumns:[...keys],sourceColumns:retain?[column.id]:[]};
+}
 export function fieldArrowOperations(
   schema: SchemaSpec,
   sourceId: string,
   targetId: string,
   name: string,
-  choice: ReferenceKeyChoice = {},
+  choice?: ReferenceKeyChoice,
   uuid: () => string = () => crypto.randomUUID(),
 ): Operation[] {
+  choice ??= defaultArrowChoice(schema,sourceId,targetId);
   name = name.trim();
   if (!name) throw new Error("Name the source field.");
   const source = schema.tables.find((t) => t.id === sourceId),

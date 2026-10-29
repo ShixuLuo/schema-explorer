@@ -6,6 +6,7 @@ import {
   useViewport,
   type EdgeProps,
 } from "@xyflow/react";
+import { useEdgeMidpoint } from "./use-edge-midpoint.ts";
 import type { RelationshipRoute } from "./relationship-routing";
 
 function rounded(points: [number, number][]) {
@@ -74,8 +75,10 @@ export default function RelationshipEdge(props: EdgeProps) {
       labelY = horizontal[0].from[1];
     }
   }
+  const { ref, point } = useEdgeMidpoint(path, { x: labelX, y: labelY });
   return (
     <>
+      <path ref={ref} d={path} fill="none" stroke="none" pointerEvents="none" aria-hidden="true" />
       <path
         d={path}
         fill="none"
@@ -123,7 +126,7 @@ export default function RelationshipEdge(props: EdgeProps) {
           <div
             className="relation-label nodrag nopan"
             style={{
-              transform: `translate(${labelX}px, ${labelY - 7 / zoom}px) scale(${1 / zoom}) translate(-50%, -100%)`,
+              transform: `translate(${point.x}px, ${point.y - 7 / zoom}px) scale(${1 / zoom}) translate(-50%, -100%)`,
               transformOrigin: "0 0",
             }}
             title={String(props.label)}

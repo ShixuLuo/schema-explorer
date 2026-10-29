@@ -1,0 +1,17 @@
+.migration-configure { font-size: 13px; }
+.configure-table { border-top: 1px solid var(--border, #ddd); padding: 12px 0; }
+.configure-table h3 { margin: 0 0 12px; font-size: 14px; }
+.configure-table h4 { margin: 10px 0 7px; font-size: 12px; font-weight: 600; }
+.configure-field { display: flex; align-items: center; gap: 12px; margin: 7px 0; min-width: 0; }
+.configure-field > span { min-width: 100px; }
+.configure-field select { min-width: 160px; max-width: 100%; flex: 1; }
+.configure-row, .configure-match-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.configure-row input { width: 70px; }
+.configure-match-row .configure-field { flex: 1; }
+.configure-match-row > span { flex: 1; }
+.configure-match { margin: 10px 0; }
+.configure-advanced { border-top: 1px solid var(--border, #ddd); margin-top: 12px; padding-top: 12px; }
+.configure-advanced > summary { cursor: pointer; color: var(--muted, #777); }
+.configure-advanced pre { overflow: auto; max-height: 240px; }
+
+.configure-query-summary { margin: 7px 0; font-size: 12px; }

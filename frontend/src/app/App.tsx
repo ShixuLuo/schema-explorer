@@ -25,7 +25,7 @@ import { prepareAiContext } from "../ai/ai-context.ts";
 import { fingerprint } from "../ai/ai-proposal.ts";
 import { schemaSpec } from "../model/wire.ts";
 import { translateCommand } from "../model/database-commands.ts";
-import CqlExperiment from "./CqlExperiment.tsx";
+import MigrationWizard from "../migration/MigrationWizard.tsx";
 import { readCsvHeaders } from "./runtime.ts";
 import type { CsvInput } from "../application/ports.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -41,11 +41,7 @@ import FloatingAddMenu, {
 import type { DiagramMode } from "../diagram/view-types.ts";
 import type { ComparisonMode, ViewTable } from "../model/comparison.ts";
 import { failureInfo } from "../model/failure.ts";
-import type { MigrationMethod } from "../model/migration-options.ts";
-import type {
-  MigrationParameters as AttributeParameters,
-  Operation,
-} from "../model/operations.ts";
+import type { Operation } from "../model/operations.ts";
 import type { Table } from "../model/schema.ts";
 import type { CaseInfo, CheckpointRange, UseCase } from "../model/workspace.ts";
 import { caseInfo } from "../model/workspace.ts";
@@ -55,7 +51,6 @@ import HistoryDialog, {
   HistoryComparisonBar,
 } from "../schema/HistoryDialog.tsx";
 import MigrationDialog from "../schema/MigrationDialog";
-import MigrationPlan from "../schema/MigrationPlan.tsx";
 import ObjectCreator from "../schema/ObjectCreator.tsx";
 import PrecheckDialog, {
   type PrecheckPrompt,
@@ -63,6 +58,7 @@ import PrecheckDialog, {
 import Icon from "../shared/Icon";
 import {
   aiExperiment,
+  migrationWorkflow,
   createEditorSession,
   history,
   loadSql,
@@ -75,7 +71,10 @@ export default function App() {
     returnId?: string;
     key: number;
   } | null>(null);
-  const [cqlOpen, setCqlOpen] = useState(false);
+  const [migrationOpen, setMigrationOpen] = useState(false);
+  const [migrationStage, setMigrationStage] = useState<"review" | "configure">(
+    "review",
+  );
   const [cases, setCases] = useState<CaseInfo[]>([]);
   const [useCase, setCase] = useState<UseCase | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -87,7 +86,6 @@ export default function App() {
   const [busy, setBusy] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [showSql, setShowSql] = useState(false);
-  const [showPlan, setShowPlan] = useState(false);
   const [diagramMode, setDiagramMode] = useState<DiagramMode>("category");
   const [sqlRange, setSqlRange] = useState<CheckpointRange | undefined>();
   const [showHistory, setShowHistory] = useState(false);
@@ -190,7 +188,6 @@ export default function App() {
       acceptedDraftRef.current = null;
       setDraft(null);
       setDraftError("");
-      setShowPlan(false);
       setShowHistory(keepHistory);
       setSavedComparison(null);
       setView((v) => ({ revision: v.revision + 1, fit: fitNewData }));
@@ -268,7 +265,7 @@ export default function App() {
     aiPreviewPlan.current = null;
     setAiReview(null);
     setShowAi(false);
-    setCqlOpen(false);
+    setMigrationOpen(false);
     setCase(null);
     setTables([]);
     setPreviewId(null);
@@ -354,12 +351,11 @@ export default function App() {
       setDraft(summary);
       setComparisonMode("changes");
       setPreviewId(null);
-      if (summary.pendingParameters?.length) setShowPlan(true);
     };
     setDraftError("");
     setBusy("Preparing preview…");
     try {
-      accept(await change(session.current, false));
+      accept(await change(session.current, true));
     } catch (error) {
       const info = failureInfo(error);
       if (!info.precheckFailed) throw error;
@@ -401,29 +397,7 @@ export default function App() {
   };
   const append = (operations: Operation[], label?: string) =>
     updateDraft((editor, force) => editor.append(operations, force, label));
-  const chooseMethod = async (index: number, method: MigrationMethod) => {
-    try {
-      await updateDraft((editor, force) =>
-        editor.chooseMethod(index, method, force),
-      );
-    } catch (error) {
-      setDraftError(failureInfo(error).message);
-    }
-  };
-  const configureParameters = (
-    index: number,
-    parameters: AttributeParameters,
-  ) =>
-    updateDraft((editor, force) =>
-      editor.configureAttribute(index, parameters, force),
-    );
-  const readPlanRows = useCallback(
-    (tableId: string, offset: number, side: "before" | "after") =>
-      session.current?.readRows(tableId, offset, 5, side) ??
-      Promise.resolve([]),
-    [],
-  );
-  const commit = async () => {
+  const commit = () => {
     if (
       aiReview?.suggestions.some(
         (s) => s.status === "pending" || s.status === "stale",
@@ -431,37 +405,38 @@ export default function App() {
       !session.current ||
       !draft ||
       busy ||
-      !useCase ||
-      draft.pendingParameters?.length
+      !useCase
     )
       return;
-    setBusy("Committing changes…");
     setDraftError("");
+    setMigrationStage("review");
+    setShowAi(false);
+    setMigrationOpen(true);
+  };
+  const migrationAiContext = async () => {
+    if (!useCase || !draft) throw new Error("Open a migration draft first.");
+    const snapshot = await aiExperiment.snapshot(useCase.id);
+    const source = schemaSpec(draft.comparison.before.tables, draft.comparison.before.relationships, draft.comparison.before.equations);
+    const actual = schemaSpec(snapshot.tables, snapshot.useCase.relationships, snapshot.useCase.equations);
+    if ((snapshot.useCase.revision ?? 0) !== (useCase.revision ?? 0) || await fingerprint(source) !== await fingerprint(actual)) throw new Error("The source changed. Reopen the migration.");
+    return prepareAiContext(snapshot, workspace, { schema: source });
+  };
+  const migrateDraft = async (assignments: import("../migration/migration-client.ts").Assignment[]) => {
+    if (!useCase || !draft || busy) return;
+    const caseId = useCase.id;
+    const before = schemaSpec(draft.comparison.before.tables, draft.comparison.before.relationships, draft.comparison.before.equations);
+    const after = schemaSpec(draft.comparison.after.tables, draft.comparison.after.relationships, draft.comparison.after.equations);
+    setBusy("Migrating…");
     try {
-      await session.current.commit();
-      setAiReview((r) =>
-        r
-          ? {
-              ...r,
-              suggestions: r.suggestions.map((s) =>
-                s.status === "accepted" ? { ...s, status: "committed" } : s,
-              ),
-            }
-          : null,
-      );
+      await migrationWorkflow.migrate(caseId, useCase.revision ?? 0, before, after, assignments, setBusy);
+      await session.current?.rollback();
       session.current = null;
-      try {
-        await load(useCase.id, draft.createdTables.length > 0);
-      } catch (error) {
-        setError(
-          `Changes committed, but the view could not reload: ${String(error)}`,
-        );
-      }
-    } catch (error) {
-      setDraftError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy("");
-    }
+      acceptedDraftRef.current = null;
+      setDraft(null);
+      setMigrationOpen(false);
+      setAiReview(null);
+      await load(caseId, true);
+    } finally { setBusy(""); }
   };
   const rollback = async () => {
     pendingAi.current.clear();
@@ -577,7 +552,7 @@ export default function App() {
 
   const startTutorial = async (restart = false) => {
     if (busy || aiWorking) return;
-    setCqlOpen(false);
+    setMigrationOpen(false);
     clearPendingAi();
     setAiReview(null);
     setShowAi(false);
@@ -609,6 +584,7 @@ export default function App() {
       setShowSql(false);
       setShowHistory(false);
       setPreviewId(null);
+      setMigrationOpen(false);
       const returnId = tutorial?.returnId;
       setTutorial(null);
       if (returnId) await load(returnId, true);
@@ -632,6 +608,10 @@ export default function App() {
     setPreviewId(null);
     setSavedComparison(null);
     if (home) {
+      await session.current?.rollback();
+      session.current = null;
+      acceptedDraftRef.current = null;
+      setMigrationOpen(false);
       setCase(null);
       setTables([]);
       setDraft(null);
@@ -687,10 +667,6 @@ export default function App() {
         .catch(() => {});
       return;
     }
-    if (draft?.pendingParameters?.length) {
-      setAiError("Finish the action details first.");
-      return;
-    }
     setAiWorking(true);
     setAiError("");
     try {
@@ -709,41 +685,8 @@ export default function App() {
       }
 
       const before = await aiExperiment.snapshot(useCase.id);
-      let snapshot = before;
-      let provider: Pick<
-        import("../application/ports.ts").WorkspaceStore,
-        "rows"
-      > = workspace;
-      if (draft && session.current) {
-        const editor = session.current;
-        snapshot = {
-          useCase: {
-            ...before.useCase,
-            relationships: draft.comparison.after.relationships,
-            equations: draft.comparison.after.equations,
-          },
-          tables: draft.comparison.after.tables.map((t) => ({
-            ...before.tables.find((o) => o.id === t.id),
-            ...t,
-            caseId: useCase.id,
-            fileName: "",
-            bytes: 0,
-          })),
-        };
-        provider = {
-          async *rows(t) {
-            let offset = 0;
-            while (true) {
-              const rows = await editor.readRows(t.id, offset, 500);
-              if (!rows.length) break;
-              yield { offset, rows };
-              offset += rows.length;
-              if (rows.length < 500) break;
-            }
-          },
-        };
-      }
-      const context = await prepareAiContext(snapshot, provider, { schema });
+      // Drafts contain schema changes only; profile the committed source rows.
+      const context = await prepareAiContext(before, workspace, { schema });
       const requestId = crypto.randomUUID(),
         baseFingerprint = await fingerprint(schema);
       const response = await fetch("/api/ai/suggestions", {
@@ -998,15 +941,6 @@ export default function App() {
           hasCase={!!useCase}
         />
       }
-      <CqlExperiment
-        hidden={!cqlOpen}
-        onClose={() => setCqlOpen(false)}
-        activeCaseId={useCase?.id ?? null}
-        load={load}
-        disabled={
-          !!busy || !!draft || !!edit || !!aiPending || aiWorking || !!tutorial
-        }
-      />
       {!useCase ? (
         <main className="landing">
           <div className="landing-content">
@@ -1123,37 +1057,17 @@ export default function App() {
                 {useCase.name}
               </button>
               <div className="toolbar-spacer" />
-              {!tutorial && (
-                <button
-                  className="toolbar-button"
-                  disabled={!!busy || workspaceLocked}
-                  onClick={() => void startTutorial()}
-                >
-                  <Icon name="book" size={14} />
-                  Tutorial
-                </button>
-              )}
               <button
                 className="toolbar-button ai-launch"
                 aria-label={showAi ? "Hide suggestions" : "Show suggestions"}
                 title={showAi ? "Hide suggestions" : "Show suggestions"}
                 disabled={!!busy || !!edit}
                 onClick={() => {
-                  setCqlOpen(false);
+                  setMigrationOpen(false);
                   setShowAi((v) => !v);
                 }}
               >
                 ✧
-              </button>
-              <button
-                className="toolbar-button"
-                disabled={!!busy || workspaceLocked || aiWorking || !!tutorial}
-                onClick={() => {
-                  setShowAi(false);
-                  setCqlOpen((value) => !value);
-                }}
-              >
-                CQL
               </button>
               <button
                 className="toolbar-button history-control"
@@ -1189,7 +1103,7 @@ export default function App() {
               {displayDraft && (
                 <GraphPreviewControls
                   summary={displayDraft}
-                  hidePlan={!!aiPending}
+                  hidePlan
                   commitDisabledReason={
                     aiReview?.suggestions.some(
                       (g) => g.status === "pending" || g.status === "stale",
@@ -1198,27 +1112,7 @@ export default function App() {
                       : undefined
                   }
                   mode={comparisonMode}
-                  details={
-                    !aiPending &&
-                    draft &&
-                    showPlan && (
-                      <MigrationPlan
-                        summary={draft}
-                        disabled={
-                          !!busy ||
-                          !!edit ||
-                          !!view.canvasEditing ||
-                          !!view.precheck
-                        }
-                        onMethod={(index, method) =>
-                          void chooseMethod(index, method)
-                        }
-                        onParameters={configureParameters}
-                        readRows={readPlanRows}
-                      />
-                    )
-                  }
-                  planVisible={!aiPending && showPlan}
+                  planVisible={false}
                   working={busy}
                   disabled={!!edit || !!view.canvasEditing || !!view.precheck}
                   error={draftError}
@@ -1228,10 +1122,7 @@ export default function App() {
                   }}
                   onCommit={() => void commit()}
                   onRollback={() => void rollback()}
-                  onPlan={() => {
-                    setPreviewId(null);
-                    setShowPlan((value) => !value);
-                  }}
+                  onPlan={() => {}}
                 />
               )}
               {savedComparison && (
@@ -1246,7 +1137,7 @@ export default function App() {
                   }}
                 />
               )}
-              {preview && !showPlan && (
+              {preview && (
                 <DataPreview
                   readRows={readRows}
                   table={preview}
@@ -1261,14 +1152,10 @@ export default function App() {
         <Tutorial
           key={tutorial.key}
           draft={!!draft}
-          configured={!!draft && !draft.pendingParameters?.length}
           editing={!!edit}
           busy={!!busy}
-          showHistory={showHistory}
-          showSql={showSql}
-          committed={
-            tables.some((table) => table.name === "Shipment") && !draft
-          }
+          migrationOpen={migrationOpen}
+          migrationStage={migrationStage}
           onExit={() => void exitTutorial()}
           onRestart={() => void startTutorial(true)}
           onExplore={() => void finishTutorial(false)}
@@ -1315,6 +1202,26 @@ export default function App() {
               setShowSql(true);
             }
           }}
+        />
+      )}
+      {migrationOpen && draft && useCase && (
+        <MigrationWizard
+          source={schemaSpec(
+            draft.comparison.before.tables,
+            draft.comparison.before.relationships,
+            draft.comparison.before.equations,
+          )}
+          target={schemaSpec(
+            draft.comparison.after.tables,
+            draft.comparison.after.relationships,
+            draft.comparison.after.equations,
+          )}
+          onStageChange={setMigrationStage}
+          onMigrate={migrateDraft}
+          loadAiContext={migrationAiContext}
+          sourceRevision={useCase.revision ?? 0}
+          operations={draft.operations}
+          onClose={() => setMigrationOpen(false)}
         />
       )}
       {showSql && useCase && (

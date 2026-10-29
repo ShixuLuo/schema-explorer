@@ -81,9 +81,15 @@ export async function prepareEdit(
     );
     const changes = planCommands(input, operations),
       schema = changes.at(-1)!.after;
-    // Compile the complete migration, retaining all runtime checks. Invalid
-    // schema/bindings cannot be overridden merely by skipping sample execution.
-    if (!pendingParameters.length) await engine.sql(input, operations, schema);
+    // Structural drafts validate the model only. Data movement is planned by
+    // the migration wizard after Commit, never by the legacy SQL compiler here.
+    if (
+      schema.tables.length > 24 ||
+      schema.tables.reduce((n, t) => n + t.columns.length, 0) > 400
+    )
+      throw new Error("A workspace supports up to 24 tables and 400 fields.");
+    if (!schemaOnly && !pendingParameters.length)
+      await engine.sql(input, operations, schema);
     const tables = schema.tables.map((spec) => ({
       ...metadata(spec, before.tables, caseId),
       rowCount: 0,
@@ -93,17 +99,19 @@ export async function prepareEdit(
     return {
       caseId,
       changedData: [],
-      steps: changes.map((change, i) =>
-        prepareAction(change, operations[i], i),
-      ),
+      steps: schemaOnly
+        ? []
+        : changes.map((change, i) => prepareAction(change, operations[i], i)),
       before,
       operations: structuredClone(operations),
       tables,
       relationships,
       equations: schema.equations ?? [],
-      ...(pendingParameters.length
-        ? { pendingParameters }
-        : { dataValidation: "unverified" as const }),
+      ...(schemaOnly
+        ? { dataValidation: "unverified" as const }
+        : pendingParameters.length
+          ? { pendingParameters }
+          : { dataValidation: "unverified" as const }),
     };
   }
   const staged = new Map<string, Table>(),

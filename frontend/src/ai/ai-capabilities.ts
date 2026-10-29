@@ -3,32 +3,12 @@ import { databasePresentation } from "../model/database-presentation.ts";
 import { translateCommand } from "../model/database-commands.ts";
 import {
   humanCommandOperations,
-  humanSourceChoices,
-  humanTargetKeyChoices,
   visibleHumanArrow,
   type HumanCommand,
 } from "../application/human-commands.ts";
-export const AI_CAPABILITY_VERSION = "human-modeling/v2";
+export const AI_CAPABILITY_VERSION = "human-modeling/v3";
 export type AiEditorAction = HumanCommand;
-const str = { type: "string" },
-  strings = { type: "array", items: str },
-  choice = {
-    type: "object",
-    properties: { targetColumns: strings, sourceColumns: strings },
-    required: ["targetColumns", "sourceColumns"],
-    additionalProperties: false,
-  };
-const declaredChoice = {
-  type: "object",
-  properties: {
-    targetColumns: strings,
-    sourceColumns: strings,
-    declareUnique: { type: "boolean" },
-  },
-  required: ["targetColumns", "sourceColumns", "declareUnique"],
-  additionalProperties: false,
-};
-const humanChoice = { anyOf: [choice, declaredChoice] };
+const str = { type: "string" }, strings = { type: "array", items: str };
 const path = {
   type: "object",
   properties: { source: str, arrows: strings },
@@ -48,13 +28,11 @@ export const AI_ACTION_JSON_SCHEMA = {
       sourceId: str,
       targetId: str,
       name: str,
-      choice: humanChoice,
     }),
     variant("create_arrow", {
       sourceId: str,
       targetId: str,
       name: str,
-      choice: humanChoice,
     }),
     variant("create_object", { name: str, keyName: str }),
     variant("rename_object", { objectId: str, name: str }),
@@ -74,14 +52,14 @@ export const AI_CAPABILITY_CATALOGUE = [
     implementation:
       "humanCommandOperations → replaceArrowOperations → App.append → EditSession",
     meaning:
-      "Same original edit_arrow fields. For entity targets use declared targetColumns; [] requests native internal identity. sourceColumns refers only to surviving fields; [] creates native hidden reference carriers. This does not promise a join on removed scalar values. The optional declareUnique flag is the same human target-key checkbox. Native migration parameters remain manual.",
+      "Provide only arrowId, sourceId, targetId and name. Entity targets use their primary key automatically. A compatible same-source scalar becomes the reference carrier without losing its stable ID or values; existing references to the same target retain their binding. Storage/key choices are internal, never model arguments. Matching records belongs to the migration parameters step; do not promise that schema editing itself migrates data.",
   },
   {
     kind: "create_arrow",
     humanControl: "Add arrow on canvas",
     implementation: "humanCommandOperations → fieldArrowOperations",
     meaning:
-      "Use existing source/target IDs; same key choices as manual arrow creation. New arrow/carrier IDs are allocated by the frontend.",
+      "Provide existing sourceId, targetId and name only. Entity targets use their primary key automatically, or a native internal identity if absent. New reference carriers are allocated by the shared human command. No choice, sourceColumns or targetColumns arguments. Matching records is handled later by migration parameters.",
   },
   {
     kind: "create_object",
@@ -177,8 +155,8 @@ export function validateAiAction(
   const o = record(value),
     kind = o.kind;
   const args: Record<string, string[]> = {
-    edit_arrow: ["arrowId", "sourceId", "targetId", "name", "choice"],
-    create_arrow: ["sourceId", "targetId", "name", "choice"],
+    edit_arrow: ["arrowId", "sourceId", "targetId", "name"],
+    create_arrow: ["sourceId", "targetId", "name"],
     create_object: ["name", "keyName"],
     rename_object: ["objectId", "name"],
     delete_object: ["objectId"],
@@ -194,22 +172,6 @@ export function validateAiAction(
   shape(o, ["kind", ...args[kind]]);
   for (const k of args[kind])
     if (!["choice", "left", "right"].includes(k)) text(o[k], k === "keyName");
-  if (o.choice) {
-    const c = record(o.choice);
-    shape(
-      c,
-      Object.hasOwn(c, "declareUnique")
-        ? ["targetColumns", "sourceColumns", "declareUnique"]
-        : ["targetColumns", "sourceColumns"],
-    );
-    if (
-      Object.hasOwn(c, "declareUnique") &&
-      typeof c.declareUnique !== "boolean"
-    )
-      throw Error("Invalid key declaration choice.");
-    list(c.targetColumns);
-    list(c.sourceColumns);
-  }
   for (const k of ["left", "right"])
     if (o[k]) {
       const p = shape(o[k], ["source", "arrows"]);
@@ -243,51 +205,6 @@ export function validateAiAction(
       !presentation.objects.some((t) => t.id === o.targetId))
   )
     throw Error("Choose an existing source and target.");
-  if (action.kind === "edit_arrow" || action.kind === "create_arrow") {
-    const source = schema.tables.find((t) => t.id === action.sourceId),
-      target = schema.tables.find((t) => t.id === action.targetId),
-      original =
-        action.kind === "edit_arrow"
-          ? schema.foreign_keys.find(
-              (f) => "reference:" + f.id === action.arrowId,
-            )
-          : undefined;
-    if (
-      !target &&
-      ((action.choice.targetColumns?.length ?? 0) ||
-        (action.choice.sourceColumns?.length ?? 0) ||
-        action.choice.declareUnique)
-    )
-      throw Error("Type targets do not use key choices.");
-    if (target) {
-      const selected = action.choice.targetColumns ?? [],
-        retained =
-          original?.target_table === target.id
-            ? original.target_columns
-            : undefined;
-      if (
-        !humanTargetKeyChoices(target, retained).some(
-          (k) => JSON.stringify(k) === JSON.stringify(selected),
-        )
-      )
-        throw Error("Choose a target key available in the human arrow editor.");
-      const fields = selected.length
-        ? selected.map((id) => target.columns.find((c) => c.id === id))
-        : [{ dataType: "integer" }];
-      for (const [index, id] of (action.choice.sourceColumns ?? []).entries()) {
-        if (id === "__new__") continue;
-        const allowed = humanSourceChoices(
-          source,
-          fields[index]?.dataType ?? "text",
-          original?.source_table === source?.id ? original?.source_columns : [],
-        );
-        if (!allowed.some((c) => c.id === id))
-          throw Error(
-            "Choose a source field available in the human arrow editor.",
-          );
-      }
-    }
-  }
   if (["add_equation", "edit_equation"].includes(kind))
     for (const key of ["left", "right"]) {
       const p = o[key] as { source: string; arrows: string[] };
@@ -362,10 +279,14 @@ export function validateAiActionGroups<
     };
   for (const group of ordered)
     for (const action of group.actions) {
-      validateAiAction(action, schema);
-      validateAiAction(action, candidate);
-      for (const operation of humanCommandOperations(candidate, action, uuid))
-        candidate = translateCommand(candidate, operation).after;
+      try {
+        validateAiAction(action, schema);
+        validateAiAction(action, candidate);
+        for (const operation of humanCommandOperations(candidate, action, uuid))
+          candidate = translateCommand(candidate, operation).after;
+      } catch (error) {
+        throw Error(`Suggestion ${group.id.slice(0,80)} (${action.kind}): ${error instanceof Error ? error.message : String(error)}`, {cause:error});
+      }
     }
   return ordered;
 }

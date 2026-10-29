@@ -1,0 +1,18 @@
+.migration-review { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); align-items: start; gap: 8px; }
+.migration-review-side { min-width: 0; border: 1px solid #dce2e5; border-radius: 6px; overflow: hidden; }
+.migration-review-label { padding: 9px 12px; border-bottom: 1px solid #e5e9eb; font-size: 11px; font-weight: 600; color: #727b82; }
+.migration-review-transition { align-self: center; text-align: center; color: #879198; font-size: 20px; }
+.migration-review-slot { min-height: 92px; display: flex; align-items: center; justify-content: center; }
+.migration-review-slot + .migration-review-slot { border-top: 1px solid #f0f2f3; }
+.migration-review-arrow { display: block; width: 100%; height: auto; min-height: 90px; color: #5c6972; }
+.migration-review-arrow rect { fill: #f8fafb; stroke: #a7b4be; stroke-width: 1.3; }
+.migration-review-arrow path { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.migration-review-arrow text { fill: currentColor; font-size: 13px; font-family: inherit; }
+.migration-review .removed { color: #b54e4e; }
+.migration-review .added { color: #23805c; }
+.migration-review-arrow .removed rect { stroke: #cb8585; fill: #fff7f6; }
+.migration-review-arrow .added rect { stroke: #75ab94; fill: #f3fbf6; }
+.migration-review-absent { color: #b9c0c5; font-size: 16px; }
+.migration-review-detail { overflow-wrap: anywhere; padding: 10px 12px; font-size: 12px; line-height: 1.5; border-top: 1px solid #edf0f2; }
+.migration-review-empty { padding: 12px 0; color: #727b82; font-size: 13px; }
+@media (max-width: 620px) { .migration-review { gap: 4px; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); } .migration-review-label { padding: 8px; } .migration-review-arrow { min-height: 76px; } }

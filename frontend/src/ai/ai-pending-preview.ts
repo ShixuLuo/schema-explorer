@@ -33,7 +33,7 @@ export class AiPendingPreview {
     try {
       const summary = await editor.append(
         [...(accepted?.operations ?? []), ...operations],
-        accepted?.dataValidation === "unverified",
+        true,
         label,
       );
       if (epoch !== this.epoch) return null;

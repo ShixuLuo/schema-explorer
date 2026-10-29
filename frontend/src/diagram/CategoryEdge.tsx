@@ -5,6 +5,7 @@ import {
   type EdgeProps,
 } from "@xyflow/react";
 import { pathMidpoint } from "./edge-geometry.ts";
+import { useEdgeMidpoint } from "./use-edge-midpoint.ts";
 import InlineLabel from "./InlineLabel.tsx";
 import type { MouseEvent } from "react";
 export default function CategoryEdge(props: EdgeProps) {
@@ -40,8 +41,10 @@ export default function CategoryEdge(props: EdgeProps) {
     x = (bend + direction * 12 + props.targetX) / 2;
     y = props.targetY;
   }
+  const { ref, point } = useEdgeMidpoint(path, { x, y });
   return (
     <>
+      <path ref={ref} d={path} fill="none" stroke="none" pointerEvents="none" aria-hidden="true" />
       <BaseEdge
         id={props.id}
         path={path}
@@ -53,7 +56,7 @@ export default function CategoryEdge(props: EdgeProps) {
         <div
           className={`category-edge-label nodrag nopan ${props.data?.attribute ? "attribute" : ""} ${props.selected ? "selected" : ""}`}
           style={{
-            transform: `translate(-50%,-50%) translate(${x}px,${y}px)`,
+            transform: `translate(-50%,-50%) translate(${point.x}px,${point.y}px)`,
             color: props.style?.stroke,
             opacity: props.style?.opacity,
           }}
