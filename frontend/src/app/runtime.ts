@@ -1,5 +1,5 @@
+import { createTutorialSample as seedTutorialSample } from "../tutorial/bookshop-sample.ts";
 export { readCsvHeaders } from "../adapters/csv.ts";
-import { schemaSpec } from "../model/wire.ts";
 import { createIndexedDbStore } from "../adapters/indexeddb-store.ts";
 import {
   createUseCase,
@@ -47,6 +47,7 @@ export const workspace = {
   deleteEmpty: store.deleteEmpty,
   undo: (id: string) => undoEdit(store, id),
   readRows: store.readRows,
+  rows: store.rows,
 };
 export const createEditorSession = (
   caseId: string,
@@ -70,115 +71,26 @@ export const history = {
     compareCheckpoint(store, id, checkpointId),
 };
 
-// Experiment only: a new case on this origin; never replaces an existing model.
-export async function createTutorialSample() {
-  const useCase = await createUseCase(store);
-  const staged: import("../model/schema.ts").Table[] = [];
-  const writers: import("../application/ports.ts").RowWriter[] = [];
-  const customer = crypto.randomUUID(),
-    order = crypto.randomUUID();
-  const customerId = crypto.randomUUID(),
-    customerName = crypto.randomUUID();
-  const orderId = crypto.randomUUID(),
-    orderCustomer = crypto.randomUUID(),
-    total = crypto.randomUUID();
-  const definitions = [
-    {
-      id: customer,
-      name: "Customer",
-      columns: [
-        {
-          id: customerId,
-          name: "id",
-          dataType: "integer" as const,
-          nullable: false,
-          index: 0,
-        },
-        {
-          id: customerName,
-          name: "name",
-          dataType: "text" as const,
-          nullable: false,
-          index: 1,
-        },
-      ],
-      primaryKey: [customerId],
-      rows: [
-        ["1", "Ada"],
-        ["2", "Lin"],
-      ],
-    },
-    {
-      id: order,
-      name: "Order",
-      columns: [
-        {
-          id: orderId,
-          name: "id",
-          dataType: "integer" as const,
-          nullable: false,
-          index: 0,
-        },
-        {
-          id: orderCustomer,
-          name: "customer_id",
-          dataType: "integer" as const,
-          nullable: false,
-          index: 1,
-        },
-        {
-          id: total,
-          name: "total_cents",
-          dataType: "integer" as const,
-          nullable: false,
-          index: 2,
-        },
-      ],
-      primaryKey: [orderId],
-      rows: [["101", "1", "2599"]],
-    },
-  ];
-  try {
-    for (const { rows, ...definition } of definitions) {
-      const table = {
-        ...definition,
-        caseId: useCase.id,
-        fileName: "",
-        bytes: 0,
-        rowCount: 0,
-      };
-      const writer = store.stage(table);
-      writers.push(writer);
-      await writer.append(rows);
-      staged.push(await writer.finish(table));
-    }
-    const foreignKey = {
-      id: crypto.randomUUID(),
-      name: "customer",
-      source_table: order,
-      source_columns: [orderCustomer],
-      target_table: customer,
-      target_columns: [customerId],
-    };
-    const specs = schemaSpec(staged, [foreignKey]);
-    await store.commit(useCase.id, 0, {
-      kind: "checkpoint",
-      description: "Tutorial sample",
-      state: { tables: staged, relationships: [foreignKey], equations: [] },
-      operations: [
-        ...specs.tables.map((table) => ({
-          op: "create_table" as const,
-          table,
-        })),
-        { op: "add_foreign_key", table_id: order, foreign_key: foreignKey },
-      ],
-    });
-    await store.patchInfo(useCase.id, { name: "Bookshop · Tutorial" });
+export const createTutorialSample = () => seedTutorialSample(store);
+
+// Development fixture uses exactly the application's existing CSV import path.
+export const aiExperiment = {
+  snapshot: store.snapshot,
+  async createSample() {
+    if (
+      !import.meta.env.DEV ||
+      !new URLSearchParams(location.search).has("aiExample")
+    )
+      throw Error("Development example is disabled.");
+    const { demoExample } = await import("../dev-fixtures/ai-demo-provider.ts");
+    const example = demoExample();
+    const useCase = await createUseCase(store);
+    await store.patchInfo(useCase.id, { name: example.name });
+    await runDataTask(
+      { kind: "import", caseId: useCase.id, files: example.files },
+      () => {},
+      new AbortController().signal,
+    );
     return useCase.id;
-  } catch (error) {
-    await Promise.allSettled(writers.map((writer) => writer.abort()));
-    await store.discard(staged);
-    await store.deleteEmpty(useCase.id);
-    throw error;
-  }
-}
+  },
+};

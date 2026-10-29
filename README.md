@@ -1,6 +1,6 @@
 # Schema Explorer
 
-A local schema editor with CSV samples, checkpoints and PostgreSQL migration SQL. No LLM or database credentials are involved.
+A local schema editor with CSV samples, checkpoints, PostgreSQL migration SQL and optional AI suggestions.
 
 ```sh
 npm ci
@@ -8,6 +8,20 @@ npm run dev
 ```
 
 Requires Node.js 22.12 or later. Open `http://127.0.0.1:5173/`.
+
+## AI suggestions
+
+Start the optional local AI service in another terminal:
+
+```sh
+npm run dev:ai
+```
+
+The service reads an OpenAI key from the git-ignored `.local/llm-api-key` file (permissions `0600`), or the path supplied through `OPENAI_API_KEY_FILE`. The key never goes to the browser. The frontend proxies `/api/ai` to the local service on port 5184; `AI_API_URL` can change that development target. Model: `gpt-6.1-sol`.
+
+Use the rightmost AI icon. Guidance is optional; suggested directions are derived from the current model. The request includes the native schema, bounded local profiles and small filtered samples. New suggestions appear as temporary graph previews. Accept or reject them individually; accepted changes use the same commands, parameter controls, validation and Commit as manual edits. Hide preserves the suggestions and preview. Suggest again uses the current accepted model. A goal can be supplied for an empty model without inventing data.
+
+The AI cannot import files, automatically configure migration parameters, or reference newly created IDs before those objects have been accepted. Examples are development-only fixtures, not production rules. CQL execution remains a separate, unmerged experiment.
 
 ## Edit and preview
 

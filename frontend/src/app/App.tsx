@@ -1,6 +1,30 @@
 import Tutorial from "./Tutorial.tsx";
 import { createTutorialSample } from "./runtime.ts";
 import "./tutorial.css";
+import {
+  pendingPreviewPlan,
+  type PendingPlan,
+  type PreviewFocus,
+} from "../ai/ai-default-preview.ts";
+import { humanCommandGroupLabel } from "../application/human-commands.ts";
+import { AiPendingPreview } from "../ai/ai-pending-preview.ts";
+import AiSuggestions from "../ai/AiSuggestions.tsx";
+import {
+  addActionRound,
+  acceptancePlan,
+  acceptPlanned,
+  rejectAction,
+  type ActionReview,
+} from "../ai/ai-action-review.ts";
+import {
+  humanActionOperations,
+  validateAiActionGroups,
+  validateAiAction,
+} from "../ai/ai-capabilities.ts";
+import { prepareAiContext } from "../ai/ai-context.ts";
+import { fingerprint } from "../ai/ai-proposal.ts";
+import { schemaSpec } from "../model/wire.ts";
+import { translateCommand } from "../model/database-commands.ts";
 import { readCsvHeaders } from "./runtime.ts";
 import type { CsvInput } from "../application/ports.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,7 +60,13 @@ import PrecheckDialog, {
   type PrecheckPrompt,
 } from "../schema/PrecheckDialog.tsx";
 import Icon from "../shared/Icon";
-import { createEditorSession, history, loadSql, workspace } from "./runtime.ts";
+import {
+  aiExperiment,
+  createEditorSession,
+  history,
+  loadSql,
+  workspace,
+} from "./runtime.ts";
 import { runDataTask } from "./worker-client.ts";
 export default function App() {
   const [tutorial, setTutorial] = useState<{
@@ -63,8 +93,67 @@ export default function App() {
     useState<SavedComparison | null>(null);
   const [draft, setDraft] = useState<EditSummary | null>(null);
   const [draftError, setDraftError] = useState("");
+  const acceptedDraftRef = useRef<EditSummary | null>(null);
+  acceptedDraftRef.current = draft;
+  const [showAi, setShowAi] = useState(false),
+    [aiReview, setAiReview] = useState<ActionReview | null>(null),
+    [aiSelected, setAiSelected] = useState<string | null>(null),
+    [aiFocus, setAiFocus] = useState<PreviewFocus>({}),
+    [aiWorking, setAiWorking] = useState(false),
+    [aiError, setAiError] = useState(""),
+    [aiLive, setAiLive] = useState(false);
+  const aiCase = useRef<string | null>(null);
+  const aiDemo =
+    import.meta.env.DEV && new URLSearchParams(location.search).has("aiDemo");
+  const pendingAi = useRef(new AiPendingPreview());
+  const [aiPending, setAiPending] = useState<EditSummary | null>(null);
+  const [aiPreviewWorking, setAiPreviewWorking] = useState(false);
+  const aiPreviewPlan = useRef<PendingPlan | null>(null),
+    aiSelectedRef = useRef<string | null>(null),
+    aiPreviewEpoch = useRef(0);
+  useEffect(() => () => pendingAi.current.clear(), []);
+  const aiSchemaRef = useRef<import("../model/operations.ts").SchemaSpec>({
+    tables: [],
+    foreign_keys: [],
+  });
+  useEffect(() => {
+    if (aiCase.current !== useCase?.id) {
+      setAiReview(null);
+      setAiSelected(null);
+      setAiFocus({});
+      setAiError("");
+      pendingAi.current.clear();
+      setAiPending(null);
+      aiPreviewPlan.current = null;
+      aiSelectedRef.current = null;
+      if (!useCase) setShowAi(false);
+      aiCase.current = useCase?.id ?? null;
+    }
+  }, [useCase?.id]);
+  useEffect(() => {
+    if (!showAi) return;
+    if (aiDemo) {
+      setAiLive(false);
+      return;
+    }
+    void fetch("/api/ai/health")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((h) => {
+        const ready = h?.ready === true && h?.protocol === "schema-actions/v1";
+        setAiLive(ready);
+        if (!ready) setAiError("AI is unavailable. Try again.");
+        else
+          setAiError((e) => (e === "AI is unavailable. Try again." ? "" : e));
+      })
+      .catch(() => {
+        setAiLive(false);
+        setAiError("AI is unavailable. Try again.");
+      });
+  }, [showAi]);
   const session = useRef<EditSession | null>(null);
-  const comparison = draft?.comparison ?? savedComparison?.comparison ?? null;
+  const displayDraft = aiPending ?? draft;
+  const comparison =
+    displayDraft?.comparison ?? savedComparison?.comparison ?? null;
   const [comparisonMode, setComparisonMode] =
     useState<ComparisonMode>("changes");
   const [edit, setEdit] = useState<{
@@ -93,6 +182,10 @@ export default function App() {
       const values = await workspace.list();
       session.current?.dispose();
       session.current = null;
+      pendingAi.current.clear();
+      setAiPending(null);
+      aiPreviewPlan.current = null;
+      acceptedDraftRef.current = null;
       setDraft(null);
       setDraftError("");
       setShowPlan(false);
@@ -168,6 +261,11 @@ export default function App() {
     if (busy || draft || savedComparison || showHistory) return;
     session.current?.dispose();
     session.current = null;
+    pendingAi.current.clear();
+    setAiPending(null);
+    aiPreviewPlan.current = null;
+    setAiReview(null);
+    setShowAi(false);
     setCase(null);
     setTables([]);
     setPreviewId(null);
@@ -220,18 +318,19 @@ export default function App() {
       setBusy("");
     }
   };
-  const activeTables = draft?.comparison.after.tables ?? tables;
+  const activeTables = displayDraft?.comparison.after.tables ?? tables;
   const activeCase =
-    useCase && draft
+    useCase && displayDraft
       ? {
           ...useCase,
-          relationships: draft.comparison.after.relationships,
-          equations: draft.comparison.after.equations,
+          relationships: displayDraft.comparison.after.relationships,
+          equations: displayDraft.comparison.after.equations,
         }
       : useCase;
   const preview = activeTables.find((t) => t.id === previewId);
   const readRows = useCallback(
     (table: ViewTable, offset: number, limit?: number) => {
+      if (aiPending) return pendingAi.current.readRows(table.id, offset, limit);
       if (draft && session.current)
         return session.current.readRows(table.id, offset, limit);
       const stored = tables.find((t) => t.id === table.id);
@@ -239,7 +338,7 @@ export default function App() {
         return Promise.reject(new Error("This table is no longer available."));
       return workspace.readRows(stored, offset, limit);
     },
-    [draft, tables],
+    [draft, aiPending, tables],
   );
   const updateDraft = async (
     change: (editor: EditSession, force: boolean) => Promise<EditSummary>,
@@ -248,6 +347,7 @@ export default function App() {
       throw new Error("Wait for the current change to finish.");
     session.current = createEditorSession(useCase.id, setBusy, session.current);
     const accept = (summary: EditSummary) => {
+      acceptedDraftRef.current = summary;
       setDraft(summary);
       setComparisonMode("changes");
       setPreviewId(null);
@@ -322,6 +422,9 @@ export default function App() {
   );
   const commit = async () => {
     if (
+      aiReview?.suggestions.some(
+        (s) => s.status === "pending" || s.status === "stale",
+      ) ||
       !session.current ||
       !draft ||
       busy ||
@@ -333,6 +436,16 @@ export default function App() {
     setDraftError("");
     try {
       await session.current.commit();
+      setAiReview((r) =>
+        r
+          ? {
+              ...r,
+              suggestions: r.suggestions.map((s) =>
+                s.status === "accepted" ? { ...s, status: "committed" } : s,
+              ),
+            }
+          : null,
+      );
       session.current = null;
       try {
         await load(useCase.id, draft.createdTables.length > 0);
@@ -348,11 +461,31 @@ export default function App() {
     }
   };
   const rollback = async () => {
+    pendingAi.current.clear();
+    setAiPending(null);
+    setAiReview(null);
+    setAiSelected(null);
+    aiSelectedRef.current = null;
+    aiPreviewPlan.current = null;
+    setAiFocus({});
     if (!session.current || busy) return;
     setBusy("Rolling back changes…");
     try {
       await session.current.rollback();
+      setAiReview((r) =>
+        r
+          ? {
+              ...r,
+              suggestions: r.suggestions.map((s) =>
+                s.status === "accepted" || s.status === "stale"
+                  ? { ...s, status: "pending" }
+                  : s,
+              ),
+            }
+          : null,
+      );
       session.current = null;
+      acceptedDraftRef.current = null;
       setDraft(null);
       setDraftError("");
       setPreviewId(null);
@@ -370,7 +503,9 @@ export default function App() {
     }
   };
   const readOnly =
-    !!savedComparison || (!!draft && comparisonMode === "before");
+    !!aiPending ||
+    !!savedComparison ||
+    (!!draft && comparisonMode === "before");
   const workspaceLocked = !!(
     edit ||
     draft ||
@@ -438,7 +573,10 @@ export default function App() {
   };
 
   const startTutorial = async (restart = false) => {
-    if (busy) return;
+    if (busy || aiWorking) return;
+    clearPendingAi();
+    setAiReview(null);
+    setShowAi(false);
     const returnId = restart ? tutorial?.returnId : useCase?.id;
     setBusy("Opening tutorial…");
     try {
@@ -497,6 +635,322 @@ export default function App() {
     }
   };
 
+  const currentAiSchema = () => {
+    const accepted = acceptedDraftRef.current;
+    return accepted
+      ? schemaSpec(
+          accepted.comparison.after.tables,
+          accepted.comparison.after.relationships,
+          accepted.comparison.after.equations,
+        )
+      : schemaSpec(
+          tables,
+          useCase?.relationships ?? [],
+          useCase?.equations ?? [],
+        );
+  };
+  aiSchemaRef.current = currentAiSchema();
+  const openAiExample = async () => {
+    if (busy || draft) return;
+    setAiWorking(true);
+    try {
+      const id = await aiExperiment.createSample();
+      await load(id, true);
+      setShowAi(true);
+    } catch (e) {
+      setAiError((e as Error).message);
+    } finally {
+      setAiWorking(false);
+    }
+  };
+  const clearPendingAi = () => {
+    pendingAi.current.clear();
+    setAiPending(null);
+    setAiSelected(null);
+    aiSelectedRef.current = null;
+    aiPreviewPlan.current = null;
+    setAiFocus({});
+  };
+  const generateAi = async (guidance: string) => {
+    if (!useCase || busy || aiPreviewWorking) return;
+    if (!aiDemo && !aiLive) {
+      setAiError("AI is unavailable. Try again.");
+      void fetch("/api/ai/health")
+        .then((r) => r.json())
+        .then((h) =>
+          setAiLive(h?.ready === true && h?.protocol === "schema-actions/v1"),
+        )
+        .catch(() => {});
+      return;
+    }
+    if (draft?.pendingParameters?.length) {
+      setAiError("Finish the action details first.");
+      return;
+    }
+    setAiWorking(true);
+    setAiError("");
+    try {
+      const schema = currentAiSchema();
+      if (aiDemo) {
+        const { demoSuggestions } =
+          await import("../dev-fixtures/ai-demo-provider.ts");
+        const groups = demoSuggestions({
+          schema,
+          iteration: (aiReview?.round ?? 0) + 1,
+          hasPriorSuggestions: !!aiReview,
+        });
+        setAiReview(addActionRound(aiReview, groups));
+        setAiSelected(null);
+        return;
+      }
+
+      const before = await aiExperiment.snapshot(useCase.id);
+      let snapshot = before;
+      let provider: Pick<
+        import("../application/ports.ts").WorkspaceStore,
+        "rows"
+      > = workspace;
+      if (draft && session.current) {
+        const editor = session.current;
+        snapshot = {
+          useCase: {
+            ...before.useCase,
+            relationships: draft.comparison.after.relationships,
+            equations: draft.comparison.after.equations,
+          },
+          tables: draft.comparison.after.tables.map((t) => ({
+            ...before.tables.find((o) => o.id === t.id),
+            ...t,
+            caseId: useCase.id,
+            fileName: "",
+            bytes: 0,
+          })),
+        };
+        provider = {
+          async *rows(t) {
+            let offset = 0;
+            while (true) {
+              const rows = await editor.readRows(t.id, offset, 500);
+              if (!rows.length) break;
+              yield { offset, rows };
+              offset += rows.length;
+              if (rows.length < 500) break;
+            }
+          },
+        };
+      }
+      const context = await prepareAiContext(snapshot, provider, { schema });
+      const requestId = crypto.randomUUID(),
+        baseFingerprint = await fingerprint(schema);
+      const response = await fetch("/api/ai/suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          caseId: useCase.id,
+          base: {
+            revision: before.useCase.revision ?? 0,
+            fingerprint: baseFingerprint,
+            schema,
+          },
+          context,
+          guidance,
+          feedback: {
+            acceptedIds:
+              aiReview?.suggestions
+                .filter(
+                  (s) => s.status === "accepted" || s.status === "committed",
+                )
+                .map((s) => s.id) ?? [],
+            rejectedIds:
+              aiReview?.suggestions
+                .filter((s) => s.status === "rejected")
+                .map((s) => s.id) ?? [],
+          },
+          pending:
+            aiReview?.suggestions
+              .filter((s) => s.status === "pending")
+              .map(({ status: _status, ...s }) => s) ?? [],
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error ?? "Please try again.");
+      if (
+        currentCase.current?.id !== before.useCase.id ||
+        result.protocol !== "schema-actions/v1" ||
+        result.requestId !== requestId ||
+        result.base?.fingerprint !== baseFingerprint ||
+        result.base?.revision !== (before.useCase.revision ?? 0) ||
+        result.dataFingerprint !== context.dataFingerprint ||
+        (await fingerprint(aiSchemaRef.current)) !== baseFingerprint
+      )
+        throw Error("The model changed. Generate again.");
+      validateAiActionGroups(result.suggestions, schema);
+      setAiReview(addActionRound(aiReview, result.suggestions));
+      setAiSelected(null);
+    } catch (e) {
+      console.error("AI suggestion generation", e);
+      setAiError((e as Error).message);
+    } finally {
+      setAiWorking(false);
+    }
+  };
+  const compileAi = (id: string) => {
+    if (!aiReview) throw Error("Try generating again.");
+    const groups = acceptancePlan(aiReview, id);
+    let schema = currentAiSchema();
+    const operations: Operation[] = [];
+    for (const group of groups)
+      for (const action of group.actions) {
+        const next = humanActionOperations(action, schema);
+        for (const op of next) {
+          schema = translateCommand(schema, op).after;
+          operations.push(op);
+        }
+      }
+    return { groups, schema, operations };
+  };
+  const rebuildAiPreview = async (
+    review: ActionReview | null,
+    accepted: EditSummary | null,
+  ) => {
+    const epoch = ++aiPreviewEpoch.current;
+    if (!useCase || !review) {
+      pendingAi.current.clear();
+      setAiPending(null);
+      aiPreviewPlan.current = null;
+      setAiPreviewWorking(false);
+      return;
+    }
+    const schema = accepted
+      ? schemaSpec(
+          accepted.comparison.after.tables,
+          accepted.comparison.after.relationships,
+          accepted.comparison.after.equations,
+        )
+      : schemaSpec(tables, useCase.relationships, useCase.equations);
+    const plan = pendingPreviewPlan(review, schema);
+    aiPreviewPlan.current = plan;
+    if (plan.skippedIds.length)
+      setAiReview((r) =>
+        r
+          ? {
+              ...r,
+              suggestions: r.suggestions.map((g) =>
+                plan.skippedIds.includes(g.id) && g.status === "pending"
+                  ? { ...g, status: "stale" }
+                  : g,
+              ),
+            }
+          : r,
+      );
+    if (!plan.operations.length) {
+      pendingAi.current.clear();
+      setAiPending(null);
+      setAiPreviewWorking(false);
+      if (!plan.focus[aiSelectedRef.current ?? ""]) setAiFocus({});
+      return;
+    }
+    setAiPreviewWorking(true);
+    try {
+      const hash = await fingerprint(schema);
+      if (epoch !== aiPreviewEpoch.current) return;
+      const summary = await pendingAi.current.show(
+        "__all_pending__",
+        hash,
+        accepted,
+        plan.operations,
+        () => createEditorSession(useCase.id, () => {}),
+        "Suggested changes",
+        plan.groupOperations,
+      );
+      if (epoch === aiPreviewEpoch.current && summary) {
+        setAiPending(summary);
+        setComparisonMode("changes");
+        setPreviewId(null);
+        setAiFocus(plan.focus[aiSelectedRef.current ?? ""] ?? {});
+      }
+    } catch (error) {
+      if (epoch === aiPreviewEpoch.current) {
+        console.error("AI pending preview", error);
+        setAiPending(null);
+        setAiError("Some suggestions need another look.");
+      }
+    } finally {
+      if (epoch === aiPreviewEpoch.current) setAiPreviewWorking(false);
+    }
+  };
+  const acceptAi = async (id: string) => {
+    if (!aiReview || busy || aiPreviewWorking || !useCase) return;
+    setAiWorking(true);
+    setAiError("");
+    try {
+      const planned = compileAi(id),
+        base = currentAiSchema(),
+        hash = await fingerprint(base);
+      const pieces = planned.groups.map((g) =>
+        pendingAi.current.pendingOperations(g.id, hash),
+      );
+      const operations = pieces.every((p) => p !== null)
+        ? pieces.flatMap((p) => p!)
+        : planned.operations;
+      const actualSchema = operations.reduce(
+        (schema, operation) => translateCommand(schema, operation).after,
+        base,
+      );
+      clearPendingAi();
+      if (operations.length)
+        await append(
+          operations,
+          planned.groups
+            .map((g) => humanCommandGroupLabel(base, g.actions))
+            .join(" + "),
+        );
+      setAiReview((r) => {
+        if (!r) return r;
+        const accepted = acceptPlanned(
+          r,
+          planned.groups.map((g) => g.id),
+        );
+        return {
+          ...accepted,
+          suggestions: accepted.suggestions.map((g) => {
+            if (g.status !== "pending") return g;
+            try {
+              for (const action of g.actions)
+                validateAiAction(action, actualSchema);
+              return g;
+            } catch {
+              return { ...g, status: "stale" as const };
+            }
+          }),
+        };
+      });
+    } catch (error) {
+      console.error("AI action", error);
+      setAiError((error as Error).message);
+      setAiReview((r) => (r ? { ...r } : r));
+    } finally {
+      setAiWorking(false);
+    }
+  };
+  const selectAi = (id: string) => {
+    setAiSelected(id);
+    aiSelectedRef.current = id;
+    const focus = aiPreviewPlan.current?.focus[id];
+    if (focus) setAiFocus(focus);
+    else {
+      const action = aiReview?.suggestions.find((g) => g.id === id)?.actions[0];
+      setAiFocus(action?.arrowId ? { arrowId: action.arrowId } : {});
+    }
+  };
+  useEffect(() => {
+    void rebuildAiPreview(aiReview, draft);
+    return () => {
+      aiPreviewEpoch.current++;
+      pendingAi.current.clear();
+    };
+  }, [aiReview, draft, useCase?.id, useCase?.revision]);
   return (
     <div
       className="app-shell"
@@ -512,10 +966,44 @@ export default function App() {
       }}
       onDrop={drop}
     >
+      {
+        <AiSuggestions
+          key={useCase?.id ?? "home"}
+          hidden={!showAi}
+          working={aiWorking || aiPreviewWorking || !!busy}
+          error={aiError}
+          review={aiReview}
+          schema={currentAiSchema()}
+          demo={aiDemo}
+          showExample={
+            import.meta.env.DEV &&
+            new URLSearchParams(location.search).has("aiExample")
+          }
+          selected={aiSelected}
+          onGenerate={(g) => void generateAi(g)}
+          onSample={() => void openAiExample()}
+          onClose={() => setShowAi(false)}
+          onSelect={selectAi}
+          onAccept={(id) => void acceptAi(id)}
+          onReject={(id) => {
+            setAiReview((r) => (r ? rejectAction(r, id) : r));
+            setAiSelected(null);
+            aiSelectedRef.current = null;
+            setAiFocus({});
+          }}
+          hasCase={!!useCase}
+        />
+      }
       {!useCase ? (
         <main className="landing">
           <div className="landing-content">
             <h1>Schema Explorer</h1>
+            {import.meta.env.DEV &&
+              new URLSearchParams(location.search).has("aiExample") && (
+                <button className="button" onClick={() => void openAiExample()}>
+                  Open example
+                </button>
+              )}
             <button
               className="upload-area"
               disabled={!!busy}
@@ -558,6 +1046,9 @@ export default function App() {
           }}
           useCase={activeCase!}
           tables={activeTables}
+          focusArrowId={aiFocus.arrowId}
+          focusObjectId={aiFocus.objectId}
+          focusEquationId={aiFocus.equationId}
           comparison={comparison}
           comparisonMode={comparisonMode}
           busy={busy}
@@ -575,21 +1066,23 @@ export default function App() {
             )
           }
           onLayout={(patch) =>
-            save({
-              ...patch,
-              ...(patch.positions
-                ? {
-                    positions: {
-                      ...Object.fromEntries(
-                        Object.entries(
-                          currentCase.current?.positions ?? {},
-                        ).filter(([id]) => id.startsWith("type:")),
-                      ),
-                      ...patch.positions,
-                    },
-                  }
-                : {}),
-            })
+            aiPending
+              ? Promise.resolve()
+              : save({
+                  ...patch,
+                  ...(patch.positions
+                    ? {
+                        positions: {
+                          ...Object.fromEntries(
+                            Object.entries(
+                              currentCase.current?.positions ?? {},
+                            ).filter(([id]) => id.startsWith("type:")),
+                          ),
+                          ...patch.positions,
+                        },
+                      }
+                    : {}),
+                })
           }
           onOperations={append}
           onPreview={setPreviewId}
@@ -616,10 +1109,6 @@ export default function App() {
               >
                 {useCase.name}
               </button>
-              {!draft?.pendingParameters?.length &&
-                activeTables.some((t) => t.dataStatus === "unverified") && (
-                  <span className="schema-only-badge">Schema only</span>
-                )}
               <div className="toolbar-spacer" />
               {!tutorial && (
                 <button
@@ -631,6 +1120,15 @@ export default function App() {
                   Tutorial
                 </button>
               )}
+              <button
+                className="toolbar-button ai-launch"
+                aria-label={showAi ? "Hide suggestions" : "Show suggestions"}
+                title={showAi ? "Hide suggestions" : "Show suggestions"}
+                disabled={!!busy || !!edit}
+                onClick={() => setShowAi((v) => !v)}
+              >
+                ✧
+              </button>
               <button
                 className="toolbar-button history-control"
                 aria-label="Open history"
@@ -662,11 +1160,21 @@ export default function App() {
           }
           footer={
             <>
-              {draft && (
+              {displayDraft && (
                 <GraphPreviewControls
-                  summary={draft}
+                  summary={displayDraft}
+                  hidePlan={!!aiPending}
+                  commitDisabledReason={
+                    aiReview?.suggestions.some(
+                      (g) => g.status === "pending" || g.status === "stale",
+                    )
+                      ? "Review the remaining suggestions first."
+                      : undefined
+                  }
                   mode={comparisonMode}
                   details={
+                    !aiPending &&
+                    draft &&
                     showPlan && (
                       <MigrationPlan
                         summary={draft}
@@ -684,7 +1192,7 @@ export default function App() {
                       />
                     )
                   }
-                  planVisible={showPlan}
+                  planVisible={!aiPending && showPlan}
                   working={busy}
                   disabled={!!edit || !!view.canvasEditing || !!view.precheck}
                   error={draftError}

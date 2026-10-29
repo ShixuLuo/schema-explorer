@@ -1,3 +1,4 @@
+import { createObjectOperations } from "../application/human-commands.ts";
 import { useEffect, useState } from "react";
 import { validateFiles } from "../application/import.ts";
 import type { CsvInput } from "../application/ports.ts";
@@ -81,26 +82,7 @@ export default function ObjectCreator({
               })),
             );
           else {
-            const keyId = crypto.randomUUID();
-            await onSubmit([
-              {
-                op: "create_table",
-                table: {
-                  id: crypto.randomUUID(),
-                  name: name.trim(),
-                  columns: [
-                    {
-                      id: keyId,
-                      name: keyName.trim() || "_id",
-                      dataType: "integer",
-                      nullable: false,
-                      generated: "identity",
-                    },
-                  ],
-                  primaryKey: [keyId],
-                },
-              },
-            ]);
+            await onSubmit(createObjectOperations(name, keyName));
           }
           onClose();
         } catch (error) {

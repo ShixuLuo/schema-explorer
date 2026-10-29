@@ -1,0 +1,40 @@
+{
+  "name": "Customer / Order",
+  "inputs": [
+    {
+      "fileName": "Customer.csv",
+      "primaryKey": "customer_id",
+      "csv": "customer_id,email_address\n1,avery@example.test\n2,riley@example.test\n3,sky@example.test\n"
+    },
+    {
+      "fileName": "Order.csv",
+      "primaryKey": "order_id",
+      "csv": "order_id,customer_id,total_cents\n101,1,1900\n102,2,2500\n103,1,800\n"
+    }
+  ],
+  "recommendations": [
+    {
+      "kind": "rename_attribute",
+      "id": "email",
+      "tableName": "Customer",
+      "columnName": "email_address",
+      "name": "email"
+    },
+    {
+      "kind": "link_attribute",
+      "id": "link",
+      "tableName": "Order",
+      "columnName": "customer_id",
+      "targetTableName": "Customer",
+      "name": "customer"
+    },
+    {
+      "kind": "rename_attribute",
+      "id": "total",
+      "tableName": "Order",
+      "columnName": "total_cents",
+      "name": "total",
+      "afterFirstPass": true
+    }
+  ]
+}

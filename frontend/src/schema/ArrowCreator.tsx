@@ -1,3 +1,7 @@
+import {
+  humanSourceChoices,
+  humanTargetKeyChoices,
+} from "../application/human-commands.ts";
 import FailureNotice from "../shared/FailureNotice.tsx";
 import { failureInfo, type FailureInfo } from "../model/failure.ts";
 import { useEffect, useState } from "react";
@@ -66,10 +70,7 @@ export default function ArrowCreator({
       ? keys.map((id) => target.columns.find((c) => c.id === id)!)
       : [{ id: "internal", name: "internal identity", dataType: "integer" }]
     : [];
-  const compatible = (type: string) =>
-    source?.columns.filter(
-      (c) => !c.generated && !c.storage && (c.dataType ?? "text") === type,
-    ) ?? [];
+  const compatible = (type: string) => humanSourceChoices(source, type);
   const chosen = fields.map(
     (f, i) =>
       components[i] ||
@@ -195,14 +196,17 @@ export default function ArrowCreator({
                     {target.name} · new internal identity
                   </option>
                 )}
-                {target.columns.map((c) => (
-                  <option key={c.id} value={JSON.stringify([c.id])}>
-                    {target.name}.{c.name}
-                    {declared.some((k) => k.length === 1 && k[0] === c.id)
-                      ? " · key"
-                      : ""}
-                  </option>
-                ))}
+                {humanTargetKeyChoices(target)
+                  .filter((k) => k.length === 1)
+                  .map((k) => target.columns.find((c) => c.id === k[0])!)
+                  .map((c) => (
+                    <option key={c.id} value={JSON.stringify([c.id])}>
+                      {target.name}.{c.name}
+                      {declared.some((k) => k.length === 1 && k[0] === c.id)
+                        ? " · key"
+                        : ""}
+                    </option>
+                  ))}
                 {declared
                   .filter((k) => k.length > 1)
                   .map((k) => (
