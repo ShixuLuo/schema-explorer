@@ -58,6 +58,8 @@ History retains checkpoint parents and the current Editing checkpoint. Restoring
 
 Models, checkpoints, and immutable row chunks are stored locally in IndexedDB. Preview SQL uses PGlite in a browser worker. Uploaded data does not become a shared cloud database. AI receives only the bounded context described above; CQL receives the source snapshot needed for an explicitly requested migration.
 
+Generic UI migrations currently support source bindings, unary value/reference paths, and equality conditions. The current parameter contract does not yet express Text-to-numeric conversions or union/deduplication for populating normalized entities. Structural edits can describe those target schemas, but their data migrations remain unsupported until these general operators are added. This is a limitation of the application contract, not the full CQL language.
+
 The Rust HTTP service supervises a Java worker using the official CQL parser/evaluator. Generic native-schema query runs and separately configured example plans share that boundary. See [CQL contract and limitations](backend/java/README.md). In-memory backend run results do not survive a service restart; applied browser checkpoints do.
 
 ## Development checks
