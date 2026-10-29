@@ -1,4 +1,14 @@
 import {
+  humanCommandOperations,
+  renameObjectOperations,
+  deleteObjectOperations,
+  renamePrimaryKeyOperations,
+  renameArrowOperations,
+  deleteArrowOperations,
+  equationOperations,
+  dropEquationOperations,
+} from "../application/human-commands.ts";
+import {
   Background,
   BackgroundVariant,
   getViewportForBounds,
@@ -10,11 +20,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  fieldArrowOperations,
-  type ReferenceKeyChoice,
-} from "../application/foreign-key-plan.ts";
-import { replaceArrowOperations } from "../application/replace-arrow.ts";
+import { type ReferenceKeyChoice } from "../application/foreign-key-plan.ts";
 import { comparisonView } from "../model/comparison.ts";
 import {
   attributeId,
@@ -97,6 +103,11 @@ export default function CategoryDiagram(props: DiagramProps) {
     [candidates, setCandidates] = useState<RelationCandidate[]>([]),
     [candidate, setCandidate] = useState(0),
     [error, setError] = useState("");
+  useEffect(() => {
+    setSelection(props.focusArrowId);
+    setObject(props.focusObjectId);
+    setEquation(props.focusEquationId);
+  }, [props.focusArrowId, props.focusObjectId, props.focusEquationId]);
   const [editingArrow, setEditingArrow] = useState<string>(),
     [editingRelation, setEditingRelation] = useState<{
       id: string;
@@ -198,23 +209,26 @@ export default function CategoryDiagram(props: DiagramProps) {
   const createArrow = async (name: string, choice?: ReferenceKeyChoice) => {
     if (!source || !pending?.target)
       throw new Error("Choose source and target first.");
-    const ops = editingArrow
-      ? replaceArrowOperations(
-          schemaSpec(tables, useCase.relationships, useCase.equations),
-          editingArrow,
-          source,
-          pending.target,
-          name,
-          choice,
-        ).operations
-      : fieldArrowOperations(
-          schemaSpec(tables, useCase.relationships, useCase.equations),
-          source,
-          pending.target,
-          name,
-          choice,
-          () => crypto.randomUUID(),
-        );
+    const schema = schemaSpec(tables, useCase.relationships, useCase.equations);
+    const ops = humanCommandOperations(
+      schema,
+      editingArrow
+        ? {
+            kind: "edit_arrow",
+            arrowId: editingArrow,
+            sourceId: source,
+            targetId: pending.target,
+            name,
+            choice: choice ?? {},
+          }
+        : {
+            kind: "create_arrow",
+            sourceId: source,
+            targetId: pending.target,
+            name,
+            choice: choice ?? {},
+          },
+    );
     if (ops.length)
       await props.onOperations(
         ops,
@@ -265,14 +279,7 @@ export default function CategoryDiagram(props: DiagramProps) {
               onRename:
                 !editing && !(comparison && comparisonMode === "before")
                   ? (name: string) =>
-                      run([
-                        {
-                          op: "rename_column",
-                          table_id: item.id,
-                          column_id: id,
-                          new_name: name,
-                        },
-                      ])
+                      run(renamePrimaryKeyOperations(item.id, id, name))
                   : undefined,
             };
           }),
@@ -324,14 +331,11 @@ export default function CategoryDiagram(props: DiagramProps) {
           },
           onRename:
             item.kind === "entity" && !editing
-              ? (name: string) =>
-                  run([
-                    { op: "rename_table", table_id: item.id, new_name: name },
-                  ])
+              ? (name: string) => run(renameObjectOperations(item.id, name))
               : undefined,
           onDelete:
             item.kind === "entity"
-              ? () => perform([{ op: "drop_table", table_id: item.id }])
+              ? () => perform(deleteObjectOperations(item.id))
               : undefined,
         },
       })),
@@ -462,68 +466,9 @@ export default function CategoryDiagram(props: DiagramProps) {
           if (!removed) chooseArrow(arrow.id);
         },
         onRename: !readOnly
-          ? (name: string) => {
-              if (reference) {
-                const ids = reference.source_columns ?? [
-                  reference.source_columns[0],
-                ];
-                return run([
-                  ...(ids.length === 1
-                    ? [
-                        {
-                          op: "rename_column" as const,
-                          table_id: reference.source_table,
-                          column_id: ids[0],
-                          new_name: name,
-                        },
-                      ]
-                    : []),
-                  {
-                    op: "rename_arrow",
-                    table_id: reference.source_table,
-                    arrow_id: reference.id,
-                    new_name: name,
-                  },
-                ]);
-              }
-              return run([
-                {
-                  op: "rename_column",
-                  table_id: arrow.source,
-                  column_id: field!.id,
-                  new_name: name,
-                },
-                ...displayed.relationships
-                  .filter(
-                    (r) =>
-                      r.source_table === arrow.source &&
-                      (r.source_columns ?? [r.source_columns[0]]).length ===
-                        1 &&
-                      r.source_columns[0] === field!.id,
-                  )
-                  .map((r) => ({
-                    op: "rename_arrow" as const,
-                    table_id: arrow.source,
-                    arrow_id: r.id,
-                    new_name: name,
-                  })),
-              ]);
-            }
+          ? (name: string) => run(renameArrowOperations(bound, arrow.id, name))
           : undefined,
-        onDelete: () =>
-          perform([
-            reference
-              ? {
-                  op: "drop_foreign_key",
-                  table_id: reference.source_table,
-                  foreign_key_id: reference.id,
-                }
-              : {
-                  op: "drop_column",
-                  table_id: arrow.source,
-                  column_id: field!.id,
-                },
-          ]),
+        onDelete: () => perform(deleteArrowOperations(bound, arrow.id)),
       },
     };
   });
@@ -564,23 +509,9 @@ export default function CategoryDiagram(props: DiagramProps) {
       const original = displayed.equations?.find(
         (e) => e.id === editingRelation?.id,
       );
-      perform([
-        ...(original
-          ? [
-              {
-                op: "drop_equation" as const,
-                table_id: original.left.source,
-                equation_id: original.id,
-              },
-            ]
-          : []),
-        {
-          op: "add_equation",
-          method: null,
-          table_id: chosen.left.source,
-          equation: { id: original?.id ?? crypto.randomUUID(), ...chosen },
-        },
-      ]);
+      perform(
+        equationOperations(bound, chosen.left, chosen.right, original?.id),
+      );
     } catch (e) {
       setError((e as Error).message);
     }
@@ -923,13 +854,7 @@ export default function CategoryDiagram(props: DiagramProps) {
                             className="equation-remove"
                             aria-label={`Delete equation ${pathLabel(presentation, e.left)} = ${pathLabel(presentation, e.right)}`}
                             onClick={() =>
-                              perform([
-                                {
-                                  op: "drop_equation",
-                                  table_id: e.left.source,
-                                  equation_id: e.id,
-                                },
-                              ])
+                              perform(dropEquationOperations(bound, e.id))
                             }
                           >
                             ×

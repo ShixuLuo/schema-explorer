@@ -14,8 +14,12 @@ export default function GraphPreviewControls({
   onRollback,
   onPlan,
   details,
+  hidePlan = false,
+  commitDisabledReason,
 }: {
   summary: EditSummary;
+  hidePlan?: boolean;
+  commitDisabledReason?: string;
   mode: ComparisonMode;
   planVisible: boolean;
   working: string;
@@ -46,38 +50,42 @@ export default function GraphPreviewControls({
       return `Action ${group < 0 ? index + 1 : group + 1}${label ? ` · ${label}` : ""}: ${message}`;
     },
   );
-  const commitReason = working
-    ? "Wait for the current operation to finish."
-    : disabled
-      ? "Finish the open editor or precheck dialog first."
-      : pending.length
-        ? pending.join("\n") +
-          "\nOpen Details → Actions to configure these steps."
-        : undefined;
+  const commitReason =
+    commitDisabledReason ??
+    (working
+      ? "Wait for the current operation to finish."
+      : disabled
+        ? "Finish the open editor or precheck dialog first."
+        : pending.length
+          ? pending.join("\n") +
+            "\nOpen Details → Actions to configure these steps."
+          : undefined);
   return (
     <div className="draft-controls-shell">
-      <details className="draft-details-drawer" open={planVisible}>
-        <summary
-          aria-controls="migration-plan"
-          onClick={(event) => {
-            event.preventDefault();
-            onPlan();
-          }}
-        >
-          <span>Details</span>
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              d={planVisible ? "M3 4.5 6 7.5 9 4.5" : "M3 7.5 6 4.5 9 7.5"}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </summary>
-        {details}
-      </details>
+      {!hidePlan && (
+        <details className="draft-details-drawer" open={planVisible}>
+          <summary
+            aria-controls="migration-plan"
+            onClick={(event) => {
+              event.preventDefault();
+              onPlan();
+            }}
+          >
+            <span>Details</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d={planVisible ? "M3 4.5 6 7.5 9 4.5" : "M3 7.5 6 4.5 9 7.5"}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </summary>
+          {details}
+        </details>
+      )}
       <section
         className="graph-preview-controls compact-preview"
         role="region"

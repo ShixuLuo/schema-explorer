@@ -46,6 +46,7 @@ export const workspace = {
   deleteEmpty: store.deleteEmpty,
   undo: (id: string) => undoEdit(store, id),
   readRows: store.readRows,
+  rows: store.rows,
 };
 export const createEditorSession = (
   caseId: string,
@@ -67,4 +68,26 @@ export const history = {
     restoreCheckpoint(store, id, checkpointId),
   compare: (id: string, checkpointId: string) =>
     compareCheckpoint(store, id, checkpointId),
+};
+
+// Development fixture uses exactly the application's existing CSV import path.
+export const aiExperiment = {
+  snapshot: store.snapshot,
+  async createSample() {
+    if (
+      !import.meta.env.DEV ||
+      !new URLSearchParams(location.search).has("aiExample")
+    )
+      throw Error("Development example is disabled.");
+    const { demoExample } = await import("../dev-fixtures/ai-demo-provider.ts");
+    const example = demoExample();
+    const useCase = await createUseCase(store);
+    await store.patchInfo(useCase.id, { name: example.name });
+    await runDataTask(
+      { kind: "import", caseId: useCase.id, files: example.files },
+      () => {},
+      new AbortController().signal,
+    );
+    return useCase.id;
+  },
 };

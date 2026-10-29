@@ -15,6 +15,9 @@ export type DiagramProps = {
   busy: string;
   disabled: boolean;
   fitNewData: boolean;
+  focusArrowId?: string;
+  focusObjectId?: string;
+  focusEquationId?: string;
   canvasAction?: { kind: "object" | "arrow" | "relation"; id: number };
   onCanvasEditing: (value: boolean) => void;
   onCanvasActionConsumed?: () => void;
