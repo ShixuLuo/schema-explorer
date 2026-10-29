@@ -1,3 +1,4 @@
+import { isDataType } from "../model/scalar.ts";
 import { translateCommand } from "../model/database-commands.ts";
 import { assertMigrationChoice } from "../model/migration-options.ts";
 import type { Operation, SchemaSpec } from "../model/operations.ts";
@@ -20,7 +21,7 @@ export function fieldArrowOperations(
   const source = schema.tables.find((t) => t.id === sourceId),
     target = schema.tables.find((t) => t.id === targetId);
   if (!source) throw new Error("Choose a source entity.");
-  if (targetId === "type:text" || targetId === "type:integer")
+  if (targetId.startsWith("type:") && isDataType(targetId.slice(5)))
     return [
       {
         op: "add_attribute",
@@ -28,7 +29,7 @@ export function fieldArrowOperations(
         column: {
           id: uuid(),
           name,
-          dataType: targetId === "type:integer" ? "integer" : "text",
+          dataType: targetId.slice(5) as import("../model/schema.ts").DataType,
           nullable: true,
         },
         parameters: { template: "extension" },

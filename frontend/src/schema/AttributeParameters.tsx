@@ -1,3 +1,4 @@
+import { validScalar } from "../model/scalar.ts";
 import { storageColumn } from "../model/database-presentation.ts";
 import {
   MIGRATION_SYMBOLS,
@@ -63,7 +64,7 @@ export default function AttributeParameters({
   const ready =
     mode === "copy"
       ? !!sourceId
-      : useNull || column.dataType === "text" || /^-?\d+$/.test(value);
+      : useNull || validScalar(column.dataType, value);
   const save = async () => {
     setWorking(true);
     setError("");
@@ -173,16 +174,26 @@ export default function AttributeParameters({
           <div className="value-configuration">
             {!useNull && (
               <label className="edit-label">
-                {column.dataType === "integer" ? "Integer value" : "Text value"}
+                {column.dataType + " value"}
                 <input
                   aria-label="Attribute value"
                   value={value}
                   disabled={locked}
-                  inputMode={column.dataType === "integer" ? "numeric" : "text"}
+                  inputMode={
+                    column.dataType === "integer"
+                      ? "numeric"
+                      : column.dataType === "real"
+                        ? "decimal"
+                        : "text"
+                  }
                   placeholder={
                     column.dataType === "integer"
-                      ? "Enter an integer"
-                      : "Leave blank for empty text"
+                      ? "Enter a signed 64-bit integer"
+                      : column.dataType === "real"
+                        ? "Enter an exact decimal"
+                        : column.dataType === "boolean"
+                          ? "Enter true or false"
+                          : "Leave blank for empty text"
                   }
                   onChange={(e) => {
                     setValue(e.target.value);

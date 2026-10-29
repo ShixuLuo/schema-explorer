@@ -593,6 +593,8 @@ export default function CategoryDiagram(props: DiagramProps) {
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            defaultEdgeOptions={{ zIndex: 1 }}
+            elevateNodesOnSelect={false}
             onNodesChange={onNodesChange}
             nodesConnectable={false}
             nodesDraggable={!locked && !editing}

@@ -1,0 +1,178 @@
+{
+  "evan.factor_entities.v1": {
+    "targetSchema": "TypedTarget",
+    "keys": {
+      "Airport": [
+        "Airport_AirportSeqID"
+      ],
+      "State": [
+        "State_Fips"
+      ]
+    },
+    "checks": [
+      "final_check_market_ticket_id",
+      "final_check_coupon_market_id",
+      "final_check_rpc_market_ticket",
+      "final_check_rpc_coupon_market",
+      "final_check_rpc_coupon_derived_ticket",
+      "final_check_surj_market_ticket",
+      "final_check_surj_coupon_market"
+    ],
+    "stages": [
+      {
+        "prefix": "evan-normalize-prefix.cql",
+        "tail": "evan-normalize-tail.cql",
+        "inputSchema": "S",
+        "inputInstance": "Input",
+        "outputInstance": "Result"
+      },
+      {
+        "prefix": "evan-posttype-prefix.cql",
+        "tail": "evan-posttype-tail.cql",
+        "inputSchema": "NormalizedStrings",
+        "inputInstance": "NormalizedInput",
+        "outputInstance": "TypedResult",
+        "bridge": {
+          "scalarMode": "groundString",
+          "entities": {
+            "Ticket": "Ticket",
+            "Market": "Market",
+            "Coupon": "Coupon",
+            "Airport": "Airport",
+            "State": "State"
+          },
+          "attributes": {
+            "Ticket_ItinID": "Ticket_ItinID",
+            "Ticket_Coupons": "Ticket_Coupons",
+            "Ticket_Year": "Ticket_Year",
+            "Ticket_Quarter": "Ticket_Quarter",
+            "Ticket_RoundTrip": "Ticket_RoundTrip",
+            "Ticket_OnLine": "Ticket_OnLine",
+            "Ticket_DollarCred": "Ticket_DollarCred",
+            "Ticket_FarePerMile": "Ticket_FarePerMile",
+            "Ticket_RPCarrier": "Ticket_RPCarrier",
+            "Ticket_Passengers": "Ticket_Passengers",
+            "Ticket_ItinFare": "Ticket_ItinFare",
+            "Ticket_BulkFare": "Ticket_BulkFare",
+            "Ticket_Distance": "Ticket_Distance",
+            "Ticket_DistanceGroup": "Ticket_DistanceGroup",
+            "Ticket_MilesFlown": "Ticket_MilesFlown",
+            "Ticket_ItinGeoType": "Ticket_ItinGeoType",
+            "Market_ItinID": "Market_ItinID",
+            "Market_MktID": "Market_MktID",
+            "Market_MktCoupons": "Market_MktCoupons",
+            "Market_Year": "Market_Year",
+            "Market_Quarter": "Market_Quarter",
+            "Market_AirportGroup": "Market_AirportGroup",
+            "Market_WacGroup": "Market_WacGroup",
+            "Market_TkCarrierChange": "Market_TkCarrierChange",
+            "Market_TkCarrierGroup": "Market_TkCarrierGroup",
+            "Market_OpCarrierChange": "Market_OpCarrierChange",
+            "Market_OpCarrierGroup": "Market_OpCarrierGroup",
+            "Market_RPCarrier": "Market_RPCarrier",
+            "Market_TkCarrier": "Market_TkCarrier",
+            "Market_OpCarrier": "Market_OpCarrier",
+            "Market_BulkFare": "Market_BulkFare",
+            "Market_Passengers": "Market_Passengers",
+            "Market_MktFare": "Market_MktFare",
+            "Market_MktDistance": "Market_MktDistance",
+            "Market_MktDistanceGroup": "Market_MktDistanceGroup",
+            "Market_MktMilesFlown": "Market_MktMilesFlown",
+            "Market_NonStopMiles": "Market_NonStopMiles",
+            "Market_ItinGeoType": "Market_ItinGeoType",
+            "Market_MktGeoType": "Market_MktGeoType",
+            "Coupon_MktID": "Coupon_MktID",
+            "Coupon_SeqNum": "Coupon_SeqNum",
+            "Coupon_Coupons": "Coupon_Coupons",
+            "Coupon_Year": "Coupon_Year",
+            "Coupon_Quarter": "Coupon_Quarter",
+            "Coupon_Break": "Coupon_Break",
+            "Coupon_CouponType": "Coupon_CouponType",
+            "Coupon_TkCarrier": "Coupon_TkCarrier",
+            "Coupon_OpCarrier": "Coupon_OpCarrier",
+            "Coupon_RPCarrier": "Coupon_RPCarrier",
+            "Coupon_Passengers": "Coupon_Passengers",
+            "Coupon_FareClass": "Coupon_FareClass",
+            "Coupon_Distance": "Coupon_Distance",
+            "Coupon_DistanceGroup": "Coupon_DistanceGroup",
+            "Coupon_Gateway": "Coupon_Gateway",
+            "Coupon_ItinGeoType": "Coupon_ItinGeoType",
+            "Coupon_CouponGeoType": "Coupon_CouponGeoType",
+            "Airport_Code": "Airport_Code",
+            "Airport_AirportID": "Airport_AirportID",
+            "Airport_AirportSeqID": "Airport_AirportSeqID",
+            "Airport_CityMarketID": "Airport_CityMarketID",
+            "Airport_Country": "Airport_Country",
+            "State_Fips": "State_Fips",
+            "State_Code": "State_Code",
+            "State_Name": "State_Name",
+            "State_Wac": "State_Wac"
+          },
+          "foreignKeys": {
+            "Ticket_OriginAirport": "Ticket_origin",
+            "Market_ticket": "Market_ticket",
+            "Market_OriginAirport": "Market_origin",
+            "Market_DestAirport": "Market_dest",
+            "Coupon_market": "Coupon_market",
+            "Coupon_OriginAirport": "Coupon_origin",
+            "Coupon_DestAirport": "Coupon_dest",
+            "Airport_State": "Airport_state"
+          }
+        }
+      }
+    ]
+  },
+  "library.factor_entities.v1": {
+    "targetSchema": "TypedLibrary",
+    "keys": {
+      "Member": [
+        "member_code"
+      ],
+      "Branch": [
+        "branch_code"
+      ]
+    },
+    "checks": [
+      "check_member_consistency",
+      "check_member_used"
+    ],
+    "stages": [
+      {
+        "prefix": "library-extract-prefix.cql",
+        "tail": "library-extract-tail.cql",
+        "inputSchema": "RawLibrary",
+        "inputInstance": "RawRows",
+        "outputInstance": "Collapsed"
+      },
+      {
+        "prefix": "library-typed-prefix.cql",
+        "tail": "library-typed-tail.cql",
+        "inputSchema": "LibraryStrings",
+        "inputInstance": "LibraryRows",
+        "outputInstance": "LibraryResult",
+        "bridge": {
+          "scalarMode": "groundString",
+          "entities": {
+            "Loan": "Borrow",
+            "Member": "Patron",
+            "Branch": "Office"
+          },
+          "attributes": {
+            "loan_id": "borrow_id",
+            "loan_member_code": "borrow_member",
+            "amount": "borrow_amount",
+            "active": "borrow_active",
+            "member_code": "patron_code",
+            "member_name": "patron_name",
+            "branch_code": "office_code",
+            "branch_name": "office_name"
+          },
+          "foreignKeys": {
+            "loan_member": "borrower",
+            "loan_branch": "location"
+          }
+        }
+      }
+    ]
+  }
+}

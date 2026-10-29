@@ -1,3 +1,4 @@
+import { validScalar } from "../model/scalar.ts";
 import type {
   WorkspaceSnapshot,
   WorkspaceStore,
@@ -116,10 +117,9 @@ export async function prepareAiContext(
           nullCount: values.length - nonNull.length,
           distinctCount,
           duplicateCount: nonNull.length - distinctCount,
-          typeFailures:
-            c.dataType === "integer"
-              ? nonNull.filter((v) => !/^[-+]?\d+$/.test(v!)).length
-              : 0,
+          typeFailures: nonNull.filter(
+            (value) => !validScalar(c.dataType ?? "text", value),
+          ).length,
         };
       }),
       keys: [t.primaryKey, ...(t.uniqueKeys ?? [])]

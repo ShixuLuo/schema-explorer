@@ -1,0 +1,209 @@
+{
+  "contract_version": "1.0",
+  "kind": "declarative-experiment-schema-not-native-java-ast",
+  "entities": {
+    "Ticket": {
+      "stored_attributes": {
+        "ItinID": "Int",
+        "Coupons": "Int",
+        "Year": "Int",
+        "Quarter": "Int",
+        "RoundTrip": "Bool",
+        "OnLine": "Bool",
+        "DollarCred": "Bool",
+        "FarePerMile": "Real",
+        "RPCarrier": "String",
+        "Passengers": "Real",
+        "ItinFare": "Real",
+        "BulkFare": "Bool",
+        "Distance": "Real",
+        "DistanceGroup": "Int",
+        "MilesFlown": "Real",
+        "ItinGeoType": "Int"
+      },
+      "refs": {
+        "OriginAirport": "Airport"
+      },
+      "derived_attributes": {},
+      "removed_flattened_attributes": [
+        "Origin",
+        "OriginAirportID",
+        "OriginAirportSeqID",
+        "OriginCityMarketID",
+        "OriginCountry",
+        "OriginStateFips",
+        "OriginState",
+        "OriginStateName",
+        "OriginWac"
+      ],
+      "removed_refs": [],
+      "primary_key": {
+        "kind": "columns",
+        "columns": [
+          "ItinID"
+        ]
+      }
+    },
+    "Market": {
+      "stored_attributes": {
+        "ItinID": "Int",
+        "MktID": "Int",
+        "MktCoupons": "Int",
+        "Year": "Int",
+        "Quarter": "Int",
+        "AirportGroup": "String",
+        "WacGroup": "String",
+        "TkCarrierChange": "Bool",
+        "TkCarrierGroup": "String",
+        "OpCarrierChange": "Bool",
+        "OpCarrierGroup": "String",
+        "RPCarrier": "String",
+        "TkCarrier": "String",
+        "OpCarrier": "String",
+        "BulkFare": "Bool",
+        "Passengers": "Real",
+        "MktFare": "Real",
+        "MktDistance": "Real",
+        "MktDistanceGroup": "Int",
+        "MktMilesFlown": "Real",
+        "NonStopMiles": "Real",
+        "ItinGeoType": "Int",
+        "MktGeoType": "Int"
+      },
+      "refs": {
+        "ticket": "Ticket",
+        "OriginAirport": "Airport",
+        "DestAirport": "Airport"
+      },
+      "derived_attributes": {},
+      "removed_flattened_attributes": [
+        "OriginAirportID",
+        "OriginAirportSeqID",
+        "OriginCityMarketID",
+        "Origin",
+        "OriginCountry",
+        "OriginStateFips",
+        "OriginState",
+        "OriginStateName",
+        "OriginWac",
+        "DestAirportID",
+        "DestAirportSeqID",
+        "DestCityMarketID",
+        "Dest",
+        "DestCountry",
+        "DestStateFips",
+        "DestState",
+        "DestStateName",
+        "DestWac"
+      ],
+      "removed_refs": [],
+      "primary_key": {
+        "kind": "columns",
+        "columns": [
+          "MktID"
+        ]
+      }
+    },
+    "Coupon": {
+      "stored_attributes": {
+        "MktID": "Int",
+        "SeqNum": "Int",
+        "Coupons": "Int",
+        "Year": "Int",
+        "Quarter": "Int",
+        "Break": "String",
+        "CouponType": "String",
+        "TkCarrier": "String",
+        "OpCarrier": "String",
+        "RPCarrier": "String",
+        "Passengers": "Real",
+        "FareClass": "String",
+        "Distance": "Real",
+        "DistanceGroup": "Int",
+        "Gateway": "Bool",
+        "ItinGeoType": "Int",
+        "CouponGeoType": "Int"
+      },
+      "refs": {
+        "market": "Market",
+        "OriginAirport": "Airport",
+        "DestAirport": "Airport"
+      },
+      "derived_attributes": {
+        "ItinID": "market.ticket.ItinID"
+      },
+      "removed_flattened_attributes": [
+        "OriginAirportID",
+        "OriginAirportSeqID",
+        "OriginCityMarketID",
+        "Origin",
+        "OriginCountry",
+        "OriginStateFips",
+        "OriginState",
+        "OriginStateName",
+        "OriginWac",
+        "DestAirportID",
+        "DestAirportSeqID",
+        "DestCityMarketID",
+        "Dest",
+        "DestCountry",
+        "DestStateFips",
+        "DestState",
+        "DestStateName",
+        "DestWac"
+      ],
+      "removed_refs": [
+        "ticket"
+      ],
+      "primary_key": {
+        "kind": "generated",
+        "name": "_id",
+        "type": "Int"
+      }
+    },
+    "Airport": {
+      "entity_key": [
+        "AirportSeqID"
+      ],
+      "stored_attributes": {
+        "Code": "String",
+        "AirportID": "Int",
+        "AirportSeqID": "Int",
+        "CityMarketID": "Int",
+        "Country": "String"
+      },
+      "refs": {
+        "State": "State"
+      },
+      "primary_key": {
+        "kind": "columns",
+        "columns": [
+          "AirportSeqID"
+        ]
+      }
+    },
+    "State": {
+      "entity_key": [
+        "Fips"
+      ],
+      "stored_attributes": {
+        "Fips": "String",
+        "Code": "String",
+        "Name": "String",
+        "Wac": "Int"
+      },
+      "refs": {},
+      "primary_key": {
+        "kind": "columns",
+        "columns": [
+          "Fips"
+        ]
+      }
+    }
+  },
+  "metadata": {
+    "title": "DB1B · normalized model",
+    "recipeId": "evan.factor_entities.v1",
+    "description": "A configured data-migration example. Load its source snapshot, run CQL, then fill the prepared target tables."
+  }
+}

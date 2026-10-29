@@ -31,13 +31,16 @@ export default function TableNode({
     <div
       className={`table-card ${selected ? "is-selected" : ""} ${data.faded ? "is-faded" : ""} ${data.readOnly ? "is-readonly" : ""} ${data.change ? `is-${data.change.kind}` : ""}`}
       data-change={data.change?.kind}
+      onClick={(event) => {
+        if (
+          !data.readOnly &&
+          !(event.target as HTMLElement).closest("button, .react-flow__handle")
+        ) {
+          data.onPreview(table.id);
+        }
+      }}
     >
-      <div
-        className="table-header"
-        onDoubleClick={() => {
-          if (!data.readOnly) data.onPreview(table.id);
-        }}
-      >
+      <div className="table-header">
         <Icon
           name={
             data.change?.kind === "added"
@@ -53,9 +56,10 @@ export default function TableNode({
         <button
           className="table-title"
           disabled={data.readOnly}
-          onClick={(event) =>
-            data.onTable(table.id, { x: event.clientX, y: event.clientY })
-          }
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onPreview(table.id);
+          }}
           title={table.name}
         >
           {data.change?.previousName && (
@@ -116,12 +120,9 @@ export default function TableNode({
                 disabled={readOnly}
                 onClick={(e) => {
                   e.stopPropagation();
-                  data.onColumn(table.id, column.id, {
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
+                  data.onPreview(table.id);
                 }}
-                aria-label={`Inspect ${table.name}.${column.name}`}
+                aria-label={`View ${table.name} data from ${column.name}`}
               >
                 {(table.primaryKey ?? []).includes(column.id) && (
                   <span className="primary-key-badge" title="Primary key">

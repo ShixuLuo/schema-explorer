@@ -82,7 +82,7 @@ export function replaceArrowOperations(
   if (!source) throw new Error("Choose a source entity.");
   if (isType) {
     const existing = source.columns.find((c) => c.name === name),
-      type = targetId === "type:integer" ? "integer" : "text";
+      type = targetId.slice(5) as import("../model/schema.ts").DataType;
     if (existing) {
       if ((existing.dataType ?? "text") !== type)
         throw new Error(

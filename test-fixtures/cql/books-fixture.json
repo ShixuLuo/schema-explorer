@@ -1,0 +1,7 @@
+{
+ "contract":{"metadata":{"title":"Books and authors"},"entities":{
+  "Author":{"stored_attributes":{"Country":"String","Code":"String","Name":"String"},"primary_key":{"kind":"columns","columns":["Country","Code"]},"refs":{}},
+  "Book":{"stored_attributes":{"Title":"String"},"primary_key":{"kind":"generated","name":"RecordNumber","type":"Int"},"refs":{"WrittenBy":"Author"}}
+ }},
+ "result":{"Author":[{"id":"writer-X","Country":"GB","Code":"0012","Name":"Ada"},{"id":"writer-Y","Country":"US","Code":"0012","Name":"Grace"}],"Book":[{"id":"volume-A","Title":"Notes","WrittenBy":"writer-Y"},{"id":"volume-B","Title":"Methods","WrittenBy":"writer-X"}]}
+}

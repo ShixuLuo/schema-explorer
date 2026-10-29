@@ -15,6 +15,10 @@ export default defineConfig({
         target: process.env.AI_API_URL ?? "http://127.0.0.1:5184",
         changeOrigin: true,
       },
+      "/api/cql": {
+        target: process.env.CQL_API_URL ?? "http://127.0.0.1:5185",
+        changeOrigin: true,
+      },
     },
   },
   build: { outDir: "../dist", emptyOutDir: true },

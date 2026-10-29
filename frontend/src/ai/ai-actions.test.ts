@@ -373,3 +373,97 @@ test("AI source and target choices cannot exceed the shared human dropdown roles
     ),
   );
 });
+
+test("real and boolean arrow edits use correct labels and native manual operations", async () => {
+  const H = await import("../application/human-commands.ts");
+  for (const [type, label] of [
+    ["real", "Real"],
+    ["boolean", "Boolean"],
+  ] as const) {
+    const action: AiEditorAction = {
+      ...rename,
+      targetId: `type:${type}`,
+      name: "converted",
+    };
+    assert.equal(
+      H.humanCommandLabel(base, action),
+      `Change email_address → ${label}`,
+    );
+    let aiId = 0,
+      manualId = 0;
+    const actual = humanActionOperations(action, base, () => `scalar${++aiId}`);
+    assert.deepEqual(
+      actual,
+      H.humanCommandOperations(base, action, () => `scalar${++manualId}`),
+    );
+    const after = actual.reduce(
+      (schema, op) => translateCommand(schema, op).after,
+      base,
+    );
+    assert.equal(
+      after.tables[0].columns.find((c) => c.name === "converted")?.dataType,
+      type,
+    );
+  }
+});
+
+test("declared composite unique keys share human and AI choices and FK operations", async () => {
+  const H = await import("../application/human-commands.ts");
+  const schema = structuredClone(base);
+  const target = schema.tables[0],
+    source = schema.tables[1];
+  target.columns.push(
+    { id: "region", name: "region", dataType: "text", nullable: false },
+    { id: "code", name: "code", dataType: "integer", nullable: false },
+  );
+  target.uniqueKeys = [
+    ["region", "code"],
+    ["region", "code"],
+  ];
+  source.columns.push(
+    { id: "region_ref", name: "region_ref", dataType: "text", nullable: true },
+    { id: "code_ref", name: "code_ref", dataType: "integer", nullable: true },
+  );
+  assert.deepEqual(H.humanTargetKeyChoices(target, ["region", "code"]), [
+    ["cid"],
+    ["region", "code"],
+  ]);
+  assert.ok(
+    H.humanSourceChoices(source, "text").some((c) => c.id === "region_ref"),
+  );
+  assert.ok(
+    H.humanSourceChoices(source, "integer").some((c) => c.id === "code_ref"),
+  );
+  const action: AiEditorAction = {
+    kind: "create_arrow",
+    sourceId: "o",
+    targetId: "c",
+    name: "customer",
+    choice: {
+      targetColumns: ["region", "code"],
+      sourceColumns: ["region_ref", "code_ref"],
+    },
+  };
+  assert.deepEqual(validateAiAction(action, schema), action);
+  let aiId = 0,
+    manualId = 0;
+  const actual = humanActionOperations(
+    action,
+    schema,
+    () => `composite${++aiId}`,
+  );
+  assert.deepEqual(
+    actual,
+    H.humanCommandOperations(schema, action, () => `composite${++manualId}`),
+  );
+  const after = actual.reduce(
+    (state, op) => translateCommand(state, op).after,
+    schema,
+  );
+  assert.equal(after.foreign_keys.length, 1);
+  assert.deepEqual(after.foreign_keys[0].target_columns, ["region", "code"]);
+  assert.deepEqual(after.foreign_keys[0].source_columns, [
+    "region_ref",
+    "code_ref",
+  ]);
+});

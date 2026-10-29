@@ -291,7 +291,7 @@ export function humanCommandLabel(
         arrow.target === command.targetId
         ? `Rename ${arrow.label} → ${command.name}`
         : command.targetId.startsWith("type:")
-          ? `Change ${arrow?.label ?? "arrow"} → ${command.targetId === "type:integer" ? "Integer" : "Text"}`
+          ? `Change ${arrow?.label ?? "arrow"} → ${databasePresentation(schema).objects.find((object) => object.id === command.targetId)?.label ?? command.targetId.slice(5)}`
           : `Link ${objectName(command.sourceId)} → ${objectName(command.targetId)}`;
     case "rename_arrow":
       return `Rename ${arrow?.label ?? "arrow"} → ${command.name}`;
@@ -337,10 +337,21 @@ export function humanSourceChoices<
   );
 }
 export function humanTargetKeyChoices(
-  target: { primaryKey?: string[]; columns: { id: string }[] },
+  target: {
+    primaryKey?: string[];
+    uniqueKeys?: string[][];
+    columns: { id: string }[];
+  },
   retainedKey?: string[],
 ): string[][] {
-  return target.primaryKey?.length
-    ? [target.primaryKey, ...(retainedKey ? [retainedKey] : [])]
-    : [[], ...target.columns.map((c) => [c.id])];
+  const choices = target.primaryKey?.length
+    ? [
+        target.primaryKey,
+        ...(target.uniqueKeys ?? []),
+        ...(retainedKey ? [retainedKey] : []),
+      ]
+    : [[], ...(target.uniqueKeys ?? []), ...target.columns.map((c) => [c.id])];
+  return [
+    ...new Map(choices.map((key) => [JSON.stringify(key), key])).values(),
+  ];
 }

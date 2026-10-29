@@ -40,6 +40,8 @@ export function storagePresentation(schema: SchemaSpec): Presentation {
     objects: [
       { id: typeId("text"), label: "Text", kind: "type" },
       { id: typeId("integer"), label: "Integer", kind: "type" },
+      { id: typeId("real"), label: "Real", kind: "type" },
+      { id: typeId("boolean"), label: "Boolean", kind: "type" },
       ...schema.tables.map((t) => ({
         id: t.id,
         label: t.name,

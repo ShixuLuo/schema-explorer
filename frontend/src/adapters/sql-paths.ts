@@ -1,3 +1,4 @@
+import type { DataType } from "../model/schema.ts";
 import {
   attributeBinding,
   identityColumns,
@@ -29,8 +30,7 @@ export function projectPath(
           path.constant.value === null
             ? { type: "null" }
             : {
-                type:
-                  path.constant.sort === "type:integer" ? "integer" : "text",
+                type: path.constant.sort.slice(5) as DataType,
                 value: path.constant.value,
               },
         ),

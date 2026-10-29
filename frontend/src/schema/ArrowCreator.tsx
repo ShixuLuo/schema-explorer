@@ -170,6 +170,8 @@ export default function ArrowCreator({
           <optgroup label="Types">
             <option value="type:text">Text</option>
             <option value="type:integer">Integer</option>
+            <option value="type:real">Real</option>
+            <option value="type:boolean">Boolean</option>
           </optgroup>
         </select>
       </label>

@@ -21,13 +21,29 @@ The service reads an OpenAI key from the git-ignored `.local/llm-api-key` file (
 
 Use the rightmost AI icon. Guidance is optional; suggested directions are derived from the current model. The request includes the native schema, bounded local profiles and small filtered samples. New suggestions appear as temporary graph previews. Accept or reject them individually; accepted changes use the same commands, parameter controls, validation and Commit as manual edits. Hide preserves the suggestions and preview. Suggest again uses the current accepted model. A goal can be supplied for an empty model without inventing data.
 
-The AI cannot import files, automatically configure migration parameters, or reference newly created IDs before those objects have been accepted. Examples are development-only fixtures, not production rules. CQL execution remains a separate, unmerged experiment.
+The AI cannot import files, automatically configure migration parameters, or reference newly created IDs before those objects have been accepted. Examples are development-only fixtures, not production rules. CQL execution is available through the separate CQL workspace described below.
+
+## CQL data execution
+
+Start the local CQL backend in another terminal:
+
+```sh
+npm run dev:cql
+```
+
+Configure `CQL_JAR` and `CQL_JAVA_HOME` (or `JAVA_HOME`) in the git-ignored `.local/cql.env`; Rust/Cargo must be on PATH. See [backend setup and API](backend/README.md). The frontend proxies `/api/cql` to loopback port 5185; `CQL_API_URL` can override that development target.
+
+Open a model and click **CQL**. The panel is hidden until requested. Its configured example prepares a new target and loads a separate source snapshot, then runs the backend and applies the returned rows to the prepared target. Apply is available only while that target is open. Existing models are not overwritten. Hiding the panel preserves its state; **Stop waiting** stops client polling, not server computation.
+
+The native editor supports Text, Integer, exact Real and Boolean. Apply follows the target's declared primary/unique keys and ordered foreign-key columns, preserves target schema IDs, stages data and publishes one checkpoint. Data results are not old editor-operation logs, so SQL export refuses paths that cross a CQL result checkpoint. Click anywhere on a table card, including a field, to open its data below the graph.
+
+The executor is driven by sealed server-owned plan definitions. The bundled dataset is an example configuration, not a special case in the engine. This is the verified PoC workflow; there is not yet a general UI that infers a migration between arbitrary models. Requests use JSON, background execution and paginated results; SSE, WebSocket and SQL-rule export are not added here.
 
 ## Edit and preview
 
 Choose **New model** for an empty model, or **Open model** for a saved one. **Category** is the editing view. **Tables** shows the relational projection of the same model; switching views does not create another version or copy.
 
-The Category view exposes seven elementary edits: add/remove object, add/remove arrow, add/remove path equation, and rename. Category remains a node-and-arrow graph. Built-in Text/Integer types are always defined and only appear when referenced. Shared Text/Integer nodes grow to provide separate, aligned incoming ports. Attribute labels sit on parallel horizontal runs; entities stay compact graph nodes. A single shared type distributes entity groups on both sides to reduce height. There are no table cards in Category. Both views arrange automatically; the manual Arrange/Fit buttons are removed.
+The Category view exposes seven elementary edits: add/remove object, add/remove arrow, add/remove path equation, and rename. Category remains a node-and-arrow graph. Built-in Text/Integer/Real/Boolean types are always defined and only appear when referenced. Shared Text/Integer nodes grow to provide separate, aligned incoming ports. Attribute labels sit on parallel horizontal runs; entities stay compact graph nodes. A single shared type distributes entity groups on both sides to reduce height. There are no table cards in Category. Both views arrange automatically; the manual Arrange/Fit buttons are removed.
 
 The persistent lower-right **+** menu contains **Object**, **Arrow**, and **Relation**. Object creates an entity with a primary key whose name defaults to `_id`, and includes CSV import. The key name appears below the entity name in Category and supports double-click renaming. Renaming changes the storage column name, while record values and reference bindings retain their IDs. CSV import asks for a primary-key column per file; leaving it unselected generates one-based `_id` row numbers, preserving duplicate records. Explicit keys are validated for empty and duplicate values across the complete file. A conflicting existing `_id` column must be selected or renamed before importing; it is never overwritten. Arrow opens a compact form for Source, Target, and Name. Its target selector offers entities or built-in Text/Integer types; clicking graph nodes also fills source and target. Types are chosen here rather than in Object creation. There are no connection ports or drag-to-connect interaction; dragging nodes only adjusts layout. Double-click a node or arrow label to rename it and use its corner **×** to delete it. Select an arrow and choose **Edit arrow** to change source, target, field or type. Existing configuration is prefilled. Endpoint changes are composed as one draft; well-typed dependent relations are preserved and incompatible ones appear as removed in the schema diff. Recreating an attribute on another source or type does not copy its values. Use the pencil beside a relation to edit its selected loop; an unchanged existing relation, including one with repeated paths, is preserved.
 

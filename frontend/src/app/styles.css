@@ -2859,3 +2859,8 @@ p {
   min-width: 0;
   max-width: 100%;
 }
+
+/* Keep category arrows and their labels above overlapping object cards. */
+.category-diagram .react-flow__edgelabel-renderer {
+  z-index: 2;
+}

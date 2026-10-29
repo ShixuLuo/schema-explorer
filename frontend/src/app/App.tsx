@@ -25,6 +25,7 @@ import { prepareAiContext } from "../ai/ai-context.ts";
 import { fingerprint } from "../ai/ai-proposal.ts";
 import { schemaSpec } from "../model/wire.ts";
 import { translateCommand } from "../model/database-commands.ts";
+import CqlExperiment from "./CqlExperiment.tsx";
 import { readCsvHeaders } from "./runtime.ts";
 import type { CsvInput } from "../application/ports.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -74,6 +75,7 @@ export default function App() {
     returnId?: string;
     key: number;
   } | null>(null);
+  const [cqlOpen, setCqlOpen] = useState(false);
   const [cases, setCases] = useState<CaseInfo[]>([]);
   const [useCase, setCase] = useState<UseCase | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -266,6 +268,7 @@ export default function App() {
     aiPreviewPlan.current = null;
     setAiReview(null);
     setShowAi(false);
+    setCqlOpen(false);
     setCase(null);
     setTables([]);
     setPreviewId(null);
@@ -574,6 +577,7 @@ export default function App() {
 
   const startTutorial = async (restart = false) => {
     if (busy || aiWorking) return;
+    setCqlOpen(false);
     clearPendingAi();
     setAiReview(null);
     setShowAi(false);
@@ -994,6 +998,15 @@ export default function App() {
           hasCase={!!useCase}
         />
       }
+      <CqlExperiment
+        hidden={!cqlOpen}
+        onClose={() => setCqlOpen(false)}
+        activeCaseId={useCase?.id ?? null}
+        load={load}
+        disabled={
+          !!busy || !!draft || !!edit || !!aiPending || aiWorking || !!tutorial
+        }
+      />
       {!useCase ? (
         <main className="landing">
           <div className="landing-content">
@@ -1125,9 +1138,22 @@ export default function App() {
                 aria-label={showAi ? "Hide suggestions" : "Show suggestions"}
                 title={showAi ? "Hide suggestions" : "Show suggestions"}
                 disabled={!!busy || !!edit}
-                onClick={() => setShowAi((v) => !v)}
+                onClick={() => {
+                  setCqlOpen(false);
+                  setShowAi((v) => !v);
+                }}
               >
                 ✧
+              </button>
+              <button
+                className="toolbar-button"
+                disabled={!!busy || workspaceLocked || aiWorking || !!tutorial}
+                onClick={() => {
+                  setShowAi(false);
+                  setCqlOpen((value) => !value);
+                }}
+              >
+                CQL
               </button>
               <button
                 className="toolbar-button history-control"

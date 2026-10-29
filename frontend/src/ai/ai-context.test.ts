@@ -4,11 +4,11 @@ import type {
   WorkspaceSnapshot,
   WorkspaceStore,
 } from "../application/ports.ts";
-import type { CellValue } from "../model/schema.ts";
+import type { CellValue, DataType } from "../model/schema.ts";
 import { prepareAiContext } from "./ai-context.ts";
 const table = (
   id: string,
-  columns: { id: string; name: string; dataType: "text" | "integer" }[],
+  columns: { id: string; name: string; dataType: DataType }[],
   count: number,
 ) => ({
   id,
@@ -139,4 +139,41 @@ test("renaming a sensitive source column cannot expose its values", async () => 
   const context = await prepareAiContext(snapshot, store, { schema });
   assert.ok(context.excludedColumnIds.includes("email"));
   assert.ok(!JSON.stringify(context).includes("example.com"));
+});
+
+test("profiles count invalid real and boolean values while allowing nulls", async () => {
+  const snapshot = fixture();
+  snapshot.tables = [
+    table(
+      "scalars",
+      [
+        { id: "id", name: "id", dataType: "integer" },
+        { id: "amount", name: "amount", dataType: "real" },
+        { id: "enabled", name: "enabled", dataType: "boolean" },
+      ],
+      6,
+    ),
+  ];
+  snapshot.useCase.relationships = [];
+  const scalarRows: CellValue[][] = [
+    ["1", "12.50", "true"],
+    ["2", "-2e3", "false"],
+    ["3", null, null],
+    ["4", "NaN", "TRUE"],
+    ["5", "Infinity", "1"],
+    ["6", "12kg", "yes"],
+  ];
+  const context = await prepareAiContext(snapshot, {
+    async *rows() {
+      yield { offset: 0, rows: scalarRows };
+    },
+  });
+  assert.deepEqual(
+    context.profiles[0].columns.map((c) => c.typeFailures),
+    [0, 3, 3],
+  );
+  assert.deepEqual(
+    context.profiles[0].columns.map((c) => c.nullCount),
+    [0, 1, 1],
+  );
 });

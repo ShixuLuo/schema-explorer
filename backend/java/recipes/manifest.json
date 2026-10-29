@@ -1,0 +1,11 @@
+{
+  "library-extract-prefix.cql": "b3d1c2fc0cf227ded4080d7287c6a553057b11e428d44beb6dd68b6d5463677d",
+  "library-extract-tail.cql": "537b06c3f2802b8edc002b2e1ca4b83db2e4ae7f45b24b4fe67fa72474371e0d",
+  "evan-posttype-prefix.cql": "926d13202ccd7fba3c0af247808862661070521fd91c496b710632541de84db2",
+  "evan-normalize-tail.cql": "ebc41aa76ea3e85fd1090da8b890f533b75846cdc2199d448c9fb1828577e5a1",
+  "evan-posttype-tail.cql": "12ccf354332355f0429d977b15535cbd53af03c085f3a8a159d486f2810ee69a",
+  "library-typed-tail.cql": "73e31cef11ada8efaef41a873f7f7bc0e29551f6af5bd715d2913eb7e67c31f0",
+  "evan-normalize-prefix.cql": "dfb04e14b6c811ec28129e229f1ff1cb939d842cea66a68120e5f37ed784bd77",
+  "library-typed-prefix.cql": "e1b801e1af42f9d5a4a4c0cfcb3d2e3183dc53a5420ed3abdfd2e5bf1bc3c02f",
+  "plans.json": "a35aa8dde86db43b0c622eb2058cdfc309594e479ca40a8205ed62edba9f02b4"
+}
