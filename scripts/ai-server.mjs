@@ -15,6 +15,7 @@ const MODEL = "gpt-6.1-sol",
     fileURLToPath(new URL("../.local/llm-api-key", import.meta.url));
 // Five-minute total AI request budget, shared with migration repair attempts.
 export const AI_REQUEST_TIMEOUT_MS = 300000;
+export const AI_REQUEST_MAX_BYTES = 256 * 1024;
 export function aiTiming(traceId, stage, event, fields = {}) {
   const safe = { trace: /^[a-f0-9-]{36}$/i.test(traceId ?? "") ? traceId : "local", stage, event };
   for (const key of ["elapsedMs", "attempt", "attempts", "httpStatus"]) if (typeof fields[key] === "number" && Number.isFinite(fields[key])) safe[key] = Math.round(fields[key]);
@@ -97,7 +98,7 @@ export function validateRequest(request) {
     throw fail("Add a short goal or load data to get suggestions.");
   if (typeof request.guidance !== "string" || request.guidance.length > 1000)
     throw fail("Guidance must be at most 1,000 characters.");
-  if (JSON.stringify(request).length > 48000)
+  if (Buffer.byteLength(JSON.stringify(request), "utf8") > AI_REQUEST_MAX_BYTES)
     throw fail("Context exceeds the input budget. Narrow the selected scope.");
 
   return request;
@@ -327,7 +328,7 @@ export function createAiServer({ generateImpl = generate, migrationGenerateImpl 
       let body = "";
       for await (const chunk of req) {
         body += chunk;
-        if (Buffer.byteLength(body) > 64000)
+        if (Buffer.byteLength(body, "utf8") > AI_REQUEST_MAX_BYTES)
           throw fail("Request exceeds budget.", 413);
       }
       let request;

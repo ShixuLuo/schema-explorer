@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { canonical } from "../frontend/src/ai/ai-proposal.ts";
-import { generateStructured, aiTiming, AI_REQUEST_TIMEOUT_MS } from "./ai-server.mjs";
+import { generateStructured, aiTiming, AI_REQUEST_TIMEOUT_MS, AI_REQUEST_MAX_BYTES } from "./ai-server.mjs";
 const hash = value => "sha256:" + createHash("sha256").update(canonical(value)).digest("hex");
 const fail = (message, status = 400) => Object.assign(Error(message), { status });
 const obj = properties => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
@@ -18,7 +18,7 @@ export function validateMigrationAiRequest(request) {
  if (request.base?.sourceHash !== hash(request.source) || request.base?.targetHash !== hash(request.target) || request.base?.assignmentsHash !== hash(request.assignments)) throw fail("Migration parameter base is stale.");
  if (request.intents !== undefined && (!Array.isArray(request.intents) || request.intents.length > 100)) throw fail("Invalid structural edit intents.");
  if (request.context && request.context.schemaFingerprint !== request.base.sourceHash) throw fail("Source data context is stale.");
- if (JSON.stringify(request).length > 48000) throw fail("Context exceeds input budget.");
+ if (Buffer.byteLength(JSON.stringify(request), "utf8") > AI_REQUEST_MAX_BYTES) throw fail("Context exceeds input budget.");
  return request;
 }
 const keys = (value, allowed) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).every(k => allowed.includes(k));

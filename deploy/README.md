@@ -7,6 +7,7 @@ docker build -t schema-explorer .
 docker run -d --name schema-explorer --restart unless-stopped \
   -p 127.0.0.1:5186:8080 \
   -e PUBLIC_ORIGIN=https://schema-explorer.luo.sx \
+  -e CQL_RUN_TIMEOUT_MS=300000 \
   -e OPENAI_API_KEY_FILE=/run/secrets/openai-key \
   -v /opt/schema-explorer/secrets/openai-key:/run/secrets/openai-key:ro \
   schema-explorer
@@ -26,4 +27,4 @@ The demo is served at https://schema-explorer.luo.sx using the existing OpenRest
 
 HTTPS certificate renewal is managed by `schema-explorer-certificate.timer` and `renew-certificate.sh`; the webroot challenge remains available on HTTP while other HTTP requests redirect to HTTPS. Deploy the matching systemd service/timer under `/etc/systemd/system` and the renewal script under `/opt/schema-explorer`. The initial certificate was issued on October 29, 2026, and a renewal dry run succeeded.
 
-The AI service has a five-minute shared generation/repair budget. The gateway allows 310 seconds and OpenResty 320 seconds. Logs record phase timings without request payloads or credentials.
+The VPS sets `CQL_RUN_TIMEOUT_MS=300000` for a five-minute CQL execution budget. The AI service separately has a five-minute shared generation/repair budget. The gateway allows 310 seconds and OpenResty 320 seconds. Logs record phase timings without request payloads or credentials.

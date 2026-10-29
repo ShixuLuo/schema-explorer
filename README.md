@@ -40,6 +40,8 @@ Run/apply is bound to the source revision, schemas, and data/result hashes. Stag
 
 ## AI
 
+Schema and migration AI metadata requests share a **256 KiB UTF-8 request cap** (`AI_REQUEST_MAX_BYTES`). This changes only the request-body allowance; sample limits and model output budgets are unchanged.
+
 AI requests have a **five-minute total deadline**. Migration parameter generation, its one bounded repair, and CQL validation share that budget; CQL validator/execution limits remain separate. Server `[ai-timing]` lines use an internal trace ID and log only phase timing/status, attempt counts, and cancellation source—never prompts, payloads, samples, or credentials.
 
 **Suggestions** uses the native schema, bounded local profiles, and filtered samples. Guidance is optional. Generated actions preview on the graph; accept or reject each group before Commit. AI and manual edits use the same command implementation. The model cannot supply SQL, executable code, or arbitrary storage bindings.

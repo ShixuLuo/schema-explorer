@@ -5,7 +5,7 @@ import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { createAiServer } from './ai-server.mjs';
+import { createAiServer, AI_REQUEST_MAX_BYTES } from './ai-server.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.PORT ?? 8080);
@@ -50,7 +50,7 @@ async function proxy(req,res,url,id) {
     if(aiDailyLimit>0 && aiCount>=aiDailyLimit) return reply(res,429,'The demo has reached its daily AI request allowance.');
     aiCount++;
   }
-  const payload=['GET','HEAD'].includes(req.method)?undefined:await body(req,ai?64000:16*1024*1024);
+  const payload=['GET','HEAD'].includes(req.method)?undefined:await body(req,ai?AI_REQUEST_MAX_BYTES:16*1024*1024);
   // Forward only application headers. External Host/Origin never impersonate
   // the loopback services; the public origin is checked by this gateway.
   const response=await fetch(target+url.pathname+url.search,{
