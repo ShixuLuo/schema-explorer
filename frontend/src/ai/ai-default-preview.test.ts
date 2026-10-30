@@ -75,7 +75,6 @@ const review = (): ActionReview => ({
           sourceId: "c",
           targetId: "type:text",
           name: "email",
-          choice: { targetColumns: [], sourceColumns: [] },
         },
       ],
       status: "pending",
@@ -91,7 +90,6 @@ const review = (): ActionReview => ({
           sourceId: "o",
           targetId: "c",
           name: "customer",
-          choice: { targetColumns: ["cid"], sourceColumns: [] },
         },
       ],
       status: "pending",
@@ -178,7 +176,7 @@ test("guidance directions are small local schema hints, never model calls or dat
   const hints = suggestionDirections(base);
   assert.deepEqual(
     hints.map((h) => h.label),
-    ["Check names", "Review references", "Simplify structure"],
+    ["Check names", "Check types", "Review references", "Simplify structure"],
   );
   assert.ok(hints.every((h) => h.guidance.length < 80));
   assert.deepEqual(suggestionDirections({ tables: [], foreign_keys: [] }), []);

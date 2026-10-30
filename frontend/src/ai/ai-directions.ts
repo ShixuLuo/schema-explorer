@@ -11,6 +11,12 @@ export function suggestionDirections(
       label: "Check names",
       guidance: "Review names for clarity.",
     });
+  if (fields.length)
+    result.push({
+      label: "Check types",
+      guidance:
+        "Review all types using data, including Boolean; preserve IDs and leading zeros.",
+    });
   if (schema.foreign_keys.length || schema.tables.length > 1)
     result.push({
       label: "Review references",
@@ -24,5 +30,5 @@ export function suggestionDirections(
       label: "Simplify structure",
       guidance: "Look for ways to simplify this structure.",
     });
-  return result.slice(0, 3);
+  return result.slice(0, 4);
 }
