@@ -1,5 +1,5 @@
 import type { SchemaSpec } from "../model/operations.ts";
-import { conversionTargets, mappingIds, type Term, type Binding, type Assignment, type AssignmentValue } from "./assignment-contract.ts";
+import { conversionTargets, mappingIds, mergeAssignments, type Term, type Binding, type Assignment, type AssignmentValue } from "./assignment-contract.ts";
 export type { Term, Binding, Assignment, AssignmentValue, Population, PopulationBranch } from "./assignment-contract.ts";
 export { populationValue } from "./assignment-contract.ts";
 export type Hole = {
@@ -126,6 +126,8 @@ export function updateAssignment(
   holeId: string,
   value: AssignmentValue,
 ): Assignment[] {
+  if (target.tables.some(t => holeId === `${t.id}.population`))
+    return mergeAssignments(assignments, [{ holeId, value }], target);
   const table = target.tables.find((t) => `${t.id}.from` === holeId);
   const stale = new Set<string>([holeId]);
   for (const entity of target.tables) if (mappingIds(target, entity.id).includes(holeId)) stale.add(`${entity.id}.population`);

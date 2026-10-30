@@ -30,10 +30,13 @@ Create a model or import CSV files. **Category** edits objects, attributes, refe
 
 The **+** menu creates an Object, Arrow, or Relation. Arrow creation asks for Source, Name, and Target. A type target creates an attribute; an object target references its primary key. Storage fields are assigned by the shared editor logic. Double-click labels to rename, and use the hover **×** controls to delete. Relation creation selects arrows that form parallel paths, then records an equation between them.
 
+Object creation defaults to an automatically generated integer key. **Key values → Use business values** creates a named, non-null single-column Text or Integer key whose values must come from the data. Manual creation and AI use the same builder; AI suggestions display the chosen key policy. CSV import keeps its existing primary-key selector.
+
 Edits form a structural draft. **Schema diff**, **Before**, and **After** preview it. **Rollback** discards the draft. **Commit** opens a migration wizard:
 
 1. Review only the changed structure.
 2. Configure data mappings. Unchanged mappings are retained; the default form shows unresolved or changed choices. **Advanced · all mappings** exposes source bindings, field paths, row equalities, and reference substitutions.
+   Population mappings expose **Deduplicate by**: choose a scalar field or keep every source record. Existing multi-field choices remain visible. Changing the choice invalidates the previous validation; Migrate checks the new assignments. New empty tables can select **No records · empty table**.
 3. **Migrate** validates through CQL, runs against the source snapshot, verifies returned keys and references, and publishes a new checkpoint. The original checkpoint remains in History.
 
 Run/apply is bound to the source revision, schemas, and data/result hashes. Staged results are published atomically; failures do not replace the source checkpoint.

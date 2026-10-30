@@ -131,3 +131,19 @@ test("FROM edits clear dependent terms and incoming reference substitutions", ()
     "x2",
   );
 });
+
+test("population edits replace only the owned entity mapping and retain branches and incoming references", () => {
+  const branch={id:"original",bindings:[{variable:"x",entity:"person"}],where:[],attributes:[{columnId:"name",term:variableTerm("x")}],foreignKeys:[]};
+  const population={deduplicateBy:["pk"],branches:[branch]};
+  const incoming={holeId:"other.foreignKey.person",value:{branch:"original",bindings:[{targetVariable:"x",term:variableTerm("row")}]}};
+  const baseline=[...stableDefaults(schema,schema),incoming];
+  const initial=updateAssignment(baseline,schema,"person.population",{population});
+  assert.deepEqual(initial.map(a=>a.holeId),[incoming.holeId,"person.population"]);
+  const changed=updateAssignment(initial,schema,"person.population",{population:{...population,deduplicateBy:["name"]}});
+  assert.deepEqual(changed[0],incoming);
+  assert.deepEqual(changed[1].value.population?.branches,[branch]);
+  assert.deepEqual(changed[1].value.population?.deduplicateBy,["name"]);
+  assert.deepEqual(initial[1].value.population?.deduplicateBy,["pk"]);
+  const empty=updateAssignment(baseline,schema,"person.population",{population:{deduplicateBy:[],branches:[]}});
+  assert.deepEqual(empty.map(a=>a.holeId),[incoming.holeId,"person.population"]);
+});

@@ -68,7 +68,6 @@ const link: AiEditorAction = {
     sourceId: "o",
     targetId: "c",
     name: "customer",
-    choice: { targetColumns: ["cid"], sourceColumns: [] },
   },
   rename: AiEditorAction = {
     kind: "edit_arrow",
@@ -76,7 +75,6 @@ const link: AiEditorAction = {
     sourceId: "c",
     targetId: "type:text",
     name: "email",
-    choice: { targetColumns: [], sourceColumns: [] },
   };
 test("AI compiles exactly the same native edit-arrow operations as the human target editor", () => {
   let a = 0,
@@ -88,7 +86,7 @@ test("AI compiles exactly the same native edit-arrow operations as the human tar
       link.sourceId,
       link.targetId,
       link.name,
-      link.choice,
+      undefined,
       () => `id${++b}`,
     ).operations;
   assert.deepEqual(actual, manual);
@@ -121,7 +119,7 @@ test("AI cannot bypass human arrow roles or use arbitrary command metadata", () 
       rename.sourceId,
       rename.targetId,
       rename.name,
-      rename.choice,
+      undefined,
     ).operations,
   );
 });
@@ -175,7 +173,7 @@ test("expanded catalogue uses the extracted manual command builders without mode
   };
   const schema = { ...base, equations: [eq] };
   const commands: AiEditorAction[] = [
-    { kind: "create_object", name: "Product", keyName: "product_id" },
+    { kind: "create_object", name: "Product", keyName: "product_id", key: { mode: "generated" } },
     { kind: "rename_object", objectId: "o", name: "Purchase" },
     { kind: "delete_object", objectId: "o" },
     {
@@ -189,7 +187,6 @@ test("expanded catalogue uses the extracted manual command builders without mode
       sourceId: "c",
       targetId: "type:text",
       name: "note",
-      choice: { targetColumns: [], sourceColumns: [] },
     },
     { kind: "rename_arrow", arrowId: "attribute:email", name: "email" },
     { kind: "delete_arrow", arrowId: "attribute:email" },
@@ -208,7 +205,7 @@ test("expanded catalogue uses the extracted manual command builders without mode
   }
   assert.throws(() =>
     validateAiAction(
-      { kind: "create_object", name: "Unsafe", keyName: "id", objectId: "c" },
+      { kind: "create_object", name: "Unsafe", keyName: "id", key: { mode: "generated" }, objectId: "c" },
       schema,
     ),
   );
@@ -219,7 +216,6 @@ test("expanded catalogue uses the extracted manual command builders without mode
         sourceId: "new-object-not-yet-created",
         targetId: "type:text",
         name: "field",
-        choice: { targetColumns: [], sourceColumns: [] },
       },
       schema,
     ),
@@ -285,7 +281,7 @@ test("client-created object IDs remain distinct and native store rejects cross-c
   for (let i = 0; i < 2; i++) {
     let id = 0;
     const op = humanActionOperations(
-      { kind: "create_object", name: "Object", keyName: "_id" },
+      { kind: "create_object", name: "Object", keyName: "_id", key: { mode: "generated" } },
       empty,
       () => `case${i}-${++id}`,
     )[0];
@@ -407,7 +403,7 @@ test("real and boolean arrow edits use correct labels and native manual operatio
   }
 });
 
-test("declared composite unique keys share human and AI choices and FK operations", async () => {
+test("manual composite keys remain available while AI uses shared defaults", async () => {
   const H = await import("../application/human-commands.ts");
   const schema = structuredClone(base);
   const target = schema.tables[0],
@@ -444,17 +440,14 @@ test("declared composite unique keys share human and AI choices and FK operation
       sourceColumns: ["region_ref", "code_ref"],
     },
   };
-  assert.deepEqual(validateAiAction(action, schema), action);
-  let aiId = 0,
-    manualId = 0;
-  const actual = humanActionOperations(
-    action,
-    schema,
-    () => `composite${++aiId}`,
-  );
+  assert.throws(() => validateAiAction(action, schema), /Unsupported action arguments/);
+  let manualId = 0;
+  const actual = H.humanCommandOperations(schema, action, () => `composite${++manualId}`);
+  const { choice: _choice, ...defaultAction } = action;
+  let a = 0, b = 0;
   assert.deepEqual(
-    actual,
-    H.humanCommandOperations(schema, action, () => `composite${++manualId}`),
+    humanActionOperations(defaultAction, schema, () => `default${++a}`),
+    H.humanCommandOperations(schema, defaultAction, () => `default${++b}`),
   );
   const after = actual.reduce(
     (state, op) => translateCommand(state, op).after,

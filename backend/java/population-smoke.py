@@ -47,22 +47,34 @@ for j in range(20):
  cid='extra'+str(j);scaled['source']['tables'][0]['columns'].append(col(cid));scaled['target']['tables'][0]['columns'].append(col(cid));scaled['assignments'].append(assignment('trip.attribute.'+cid,term=term(cid,x)))
  for row in scaled['data']['tables']['trip']:row[cid]='value'+str(j)
 cases.append(('population-wide500',scaled))
+business=copy.deepcopy(pop)
+stop=business['target']['tables'][1];stop['columns']=[c for c in stop['columns'] if c['id']!='stop-pk'];stop['primaryKey']=['code']
+next(c for c in stop['columns'] if c['id']=='code')['storage']='identity'
+for fk in business['target']['foreign_keys']:
+ if fk['target_table']=='stop':
+  fk['target_columns']=['code']
+  for cid in fk['source_columns']:next(c for c in business['target']['tables'][0]['columns'] if c['id']==cid)['dataType']='text'
+for row in business['data']['tables']['trip']:
+ for field in ['fromCode','toCode']:row[field]={'A':'01','B':'02'}[row[field]]
+cases.append(('population-business-key',business))
+keep=copy.deepcopy(pop);keep['assignments'][-2]['value']['population']['deduplicateBy']=[]
+cases.append(('population-keep-all',keep))
 requests=''.join(json.dumps(dict(id=name,op='evaluate',payload=p))+'\n' for name,p in cases)
 proc=subprocess.run(['sh',str(here/'run-worker.sh')],input=requests,text=True,capture_output=True,timeout=90)
 results=[json.loads(line) for line in proc.stdout.splitlines() if line.startswith('{')]
 (here/'build/population-smoke-results.json').write_text(json.dumps(results,indent=2))
 (here/'build/population-smoke-stderr.log').write_text(proc.stderr)
 assert len(results)==len(cases),(proc.returncode,proc.stderr[-2000:])
-positive={'cast-valid','population-valid','population-with-cast','population-empty','population-wide500'}
+positive={'cast-valid','population-valid','population-with-cast','population-empty','population-wide500','population-business-key','population-keep-all'}
 for r in results:
  q=r.get('result',{});assert q.get('status')==('evaluated' if r['id'] in positive else 'invalid'),(r['id'],q.get('diagnostics'))
  if r['id'].startswith('population-') and r['id'] in positive and r['id']!='population-empty':
-  tables=q['tables'];assert {k:len(v) for k,v in tables.items()}=={'trip':500 if r['id']=='population-wide500' else 3,'stop':2,'region':2}
+  tables=q['tables'];assert {k:len(v) for k,v in tables.items()}=={'trip':500 if r['id']=='population-wide500' else 3,'stop':6 if r['id']=='population-keep-all' else 2,'region':2}
   stops={v['id']:v for v in tables['stop']};regions={v['id']:v for v in tables['region']}
   for row in tables['trip']:
    for ref,prefix in [('fromStop','from'),('toStop','to')]:
     stop=stops[row['foreignKeys'][ref]];code=row['values'][prefix+'Code']
-    if r['id']!='population-valid':code=str(int(__import__('decimal').Decimal(code)))
+    if r['id'] in ['population-with-cast','population-wide500']:code=str(int(__import__('decimal').Decimal(code)))
     assert stop['values']['code']==code
     assert stop['values']['label']==row['values'][prefix+'Name']
     assert regions[stop['foreignKeys']['region']]['values']['regionCode']==row['values'][prefix+'Region']

@@ -3,10 +3,11 @@ import { databasePresentation } from "../model/database-presentation.ts";
 import { translateCommand } from "../model/database-commands.ts";
 import {
   humanCommandOperations,
+  BUSINESS_KEY_TYPES,
   visibleHumanArrow,
   type HumanCommand,
 } from "../application/human-commands.ts";
-export const AI_CAPABILITY_VERSION = "human-modeling/v3";
+export const AI_CAPABILITY_VERSION = "human-modeling/v4";
 export type AiEditorAction = HumanCommand;
 const str = { type: "string" }, strings = { type: "array", items: str };
 const path = {
@@ -34,7 +35,16 @@ export const AI_ACTION_JSON_SCHEMA = {
       targetId: str,
       name: str,
     }),
-    variant("create_object", { name: str, keyName: str }),
+    variant("create_object", {
+      name: str,
+      keyName: str,
+      key: {
+        anyOf: [
+          { type: "object", properties: { mode: { type: "string", enum: ["generated"] } }, required: ["mode"], additionalProperties: false },
+          { type: "object", properties: { mode: { type: "string", enum: ["business"] }, dataType: { type: "string", enum: BUSINESS_KEY_TYPES } }, required: ["mode", "dataType"], additionalProperties: false },
+        ],
+      },
+    }),
     variant("rename_object", { objectId: str, name: str }),
     variant("delete_object", { objectId: str }),
     variant("rename_primary_key", { objectId: str, columnId: str, name: str }),
@@ -66,7 +76,7 @@ export const AI_CAPABILITY_CATALOGUE = [
     humanControl: "Add object",
     implementation: "createObjectOperations (also used by ObjectCreator)",
     meaning:
-      "Provide name and keyName only. Client allocates both IDs and the same generated integer identity as the human form. Any later action using this new object must wait until the next round after acceptance.",
+      "Provide name, keyName, and key. Use key={mode:'generated'} for an automatically generated integer key, or key={mode:'business',dataType:'text'|'integer'} for a named single-column business key whose non-null unique values must be supplied by the data during migration. Default to generated when no business identity is established. Preserve identifier spelling and leading zeros when choosing a type. Client allocates schema IDs through the same builder as the human form. Any later action using this new object must wait until the next round after acceptance.",
   },
   {
     kind: "rename_object",
@@ -157,7 +167,7 @@ export function validateAiAction(
   const args: Record<string, string[]> = {
     edit_arrow: ["arrowId", "sourceId", "targetId", "name"],
     create_arrow: ["sourceId", "targetId", "name"],
-    create_object: ["name", "keyName"],
+    create_object: ["name", "keyName", "key"],
     rename_object: ["objectId", "name"],
     delete_object: ["objectId"],
     rename_primary_key: ["objectId", "columnId", "name"],
@@ -171,7 +181,17 @@ export function validateAiAction(
     throw Error("Unsupported human editor action.");
   shape(o, ["kind", ...args[kind]]);
   for (const k of args[kind])
-    if (!["choice", "left", "right"].includes(k)) text(o[k], k === "keyName");
+    if (!["choice", "left", "right", "key"].includes(k)) text(o[k], k === "keyName");
+  if (kind === "create_object") {
+    const key = record(o.key);
+    if (key.mode === "generated") shape(key, ["mode"]);
+    else if (key.mode === "business") {
+      shape(key, ["mode", "dataType"]);
+      if (!BUSINESS_KEY_TYPES.some(type=>type===key.dataType))
+        throw Error("Choose a supported business key type.");
+      text(o.keyName);
+    } else throw Error("Choose generated or business key values.");
+  }
   for (const k of ["left", "right"])
     if (o[k]) {
       const p = shape(o[k], ["source", "arrows"]);

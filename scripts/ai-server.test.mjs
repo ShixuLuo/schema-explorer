@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   createAiServer,
+  AI_REQUEST_MAX_BYTES,
   validateRequest,
   validateSuggestions,
   parseResponse,
@@ -70,7 +71,6 @@ const result = {
           sourceId: "t",
           targetId: "type:text",
           name: "description",
-          choice: { targetColumns: [], sourceColumns: [] },
         },
       ],
     },
@@ -169,7 +169,7 @@ test("HTTP proxy rejects nonlocal origins and limits body without calling AI", a
     r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...request, guidance: "x".repeat(65000) }),
+      body: JSON.stringify({ ...request, guidance: "x".repeat(AI_REQUEST_MAX_BYTES + 1) }),
     });
     assert.equal(r.status, 413);
     assert.equal(calls, 0);
@@ -202,7 +202,7 @@ test("a supplied goal permits an empty model without invented data", () => {
           title: "Create Shipment",
           dependsOn: [],
           actions: [
-            { kind: "create_object", name: "Shipment", keyName: "_id" },
+            { kind: "create_object", name: "Shipment", keyName: "_id", key: { mode: "generated" } },
           ],
         },
       ],
@@ -229,6 +229,6 @@ test("conflicting groups are rejected before reaching the user", () => {
         },
         request,
       ),
-    /conflicting|invalid/,
+    /could not be applied:.*no longer available/,
   );
 });

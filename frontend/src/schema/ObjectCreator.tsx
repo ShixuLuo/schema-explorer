@@ -1,4 +1,4 @@
-import { createObjectOperations } from "../application/human-commands.ts";
+import { createObjectOperations, BUSINESS_KEY_TYPES, type NewObjectKey } from "../application/human-commands.ts";
 import { useEffect, useState } from "react";
 import { validateFiles } from "../application/import.ts";
 import type { CsvInput } from "../application/ports.ts";
@@ -24,6 +24,8 @@ export default function ObjectCreator({
     ),
     [name, setName] = useState(""),
     [keyName, setKeyName] = useState(""),
+    [keyMode, setKeyMode] = useState<NewObjectKey["mode"]>("generated"),
+    [keyType, setKeyType] = useState<(typeof BUSINESS_KEY_TYPES)[number]>("text"),
     [files, setFiles] = useState(initialFiles),
     [headers, setHeaders] = useState<string[][]>([]),
     [keys, setKeys] = useState<string[]>([]),
@@ -82,7 +84,8 @@ export default function ObjectCreator({
               })),
             );
           else {
-            await onSubmit(createObjectOperations(name, keyName));
+            await onSubmit(createObjectOperations(name, keyName,
+              keyMode === "generated" ? { mode: "generated" } : { mode: "business", dataType: keyType }));
           }
           onClose();
         } catch (error) {
@@ -140,15 +143,31 @@ export default function ObjectCreator({
             />
           </label>
           <label className="edit-label">
-            Primary key
+            Key values
+            <select aria-label="Key values" value={keyMode} disabled={working}
+              onChange={(e) => setKeyMode(e.target.value as NewObjectKey["mode"])}>
+              <option value="generated">Generate automatically</option>
+              <option value="business">Use business values</option>
+            </select>
+          </label>
+          <label className="edit-label">
+            Primary key name
             <input
               aria-label="Primary key name"
-              placeholder="_id"
+              placeholder={keyMode === "generated" ? "_id" : "e.g. code"}
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
               disabled={working}
+              required={keyMode === "business"}
             />
           </label>
+          {keyMode === "business" && <label className="edit-label">
+            Key type
+            <select aria-label="Key type" value={keyType} disabled={working}
+              onChange={(e) => setKeyType(e.target.value as (typeof BUSINESS_KEY_TYPES)[number])}>
+              {BUSINESS_KEY_TYPES.map(type => <option value={type} key={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}
+            </select>
+          </label>}
         </>
       ) : (
         <>
@@ -211,7 +230,7 @@ export default function ObjectCreator({
             working ||
             reading ||
             (source === "empty"
-              ? !name.trim()
+              ? !name.trim() || (keyMode === "business" && !keyName.trim())
               : !files.length || headers.length !== files.length)
           }
         >

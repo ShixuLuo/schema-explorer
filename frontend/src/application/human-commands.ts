@@ -10,6 +10,10 @@ import {
   type ReferenceKeyChoice,
 } from "./foreign-key-plan.ts";
 import { replaceArrowOperations } from "./replace-arrow.ts";
+export const BUSINESS_KEY_TYPES = ["text", "integer"] as const;
+export type NewObjectKey =
+  | { mode: "generated" }
+  | { mode: "business"; dataType: (typeof BUSINESS_KEY_TYPES)[number] };
 export type HumanCommand = (
   | {
       kind: "edit_arrow";
@@ -26,7 +30,7 @@ export type HumanCommand = (
       name: string;
       choice?: ReferenceKeyChoice;
     }
-  | { kind: "create_object"; name: string; keyName: string }
+  | { kind: "create_object"; name: string; keyName: string; key: NewObjectKey }
   | { kind: "rename_object"; objectId: string; name: string }
   | { kind: "delete_object"; objectId: string }
   | {
@@ -44,8 +48,14 @@ export type HumanCommand = (
 export function createObjectOperations(
   name: string,
   keyName: string,
+  key: NewObjectKey = { mode: "generated" },
   uuid: () => string = () => crypto.randomUUID(),
 ): Operation[] {
+  if (!name.trim()) throw Error("Name the object.");
+  if (key.mode !== "generated" && key.mode !== "business")
+    throw Error("Choose how key values are supplied.");
+  if (key.mode === "business" && (!keyName.trim() || !BUSINESS_KEY_TYPES.some(type=>type===key.dataType)))
+    throw Error("Name the business key and choose its type.");
   const keyId = uuid();
   return [
     {
@@ -57,9 +67,11 @@ export function createObjectOperations(
           {
             id: keyId,
             name: keyName.trim() || "_id",
-            dataType: "integer",
+            dataType: key.mode === "generated" ? "integer" : key.dataType,
             nullable: false,
-            generated: "identity",
+            ...(key.mode === "generated"
+              ? { generated: "identity" as const }
+              : { storage: "identity" as const }),
           },
         ],
         primaryKey: [keyId],
@@ -206,7 +218,7 @@ export function humanCommandOperations(
 ): Operation[] {
   switch (command.kind) {
     case "create_object":
-      return createObjectOperations(command.name, command.keyName, uuid);
+      return createObjectOperations(command.name, command.keyName, command.key, uuid);
     case "rename_object":
       return renameObjectOperations(command.objectId, command.name);
     case "delete_object":
@@ -276,7 +288,9 @@ export function humanCommandLabel(
     : undefined;
   switch (command.kind) {
     case "create_object":
-      return `Create ${command.name}`;
+      return command.key?.mode === "business"
+        ? `Create ${command.name} · key ${command.keyName} (${command.key.dataType})`
+        : `Create ${command.name} · generated key`;
     case "rename_object":
       return `Rename ${objectName(command.objectId)} → ${command.name}`;
     case "delete_object":
