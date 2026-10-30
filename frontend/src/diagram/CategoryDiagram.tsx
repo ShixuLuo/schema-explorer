@@ -51,6 +51,7 @@ import CategoryEdge from "./CategoryEdge.tsx";
 import CategoryNode, { type CategoryFlowNode } from "./CategoryNode.tsx";
 import DiagramToolbar from "./DiagramToolbar.tsx";
 import type { DiagramProps } from "./view-types.ts";
+import { placePopover } from "../shared/floating-placement.ts";
 const nodeTypes = { object: CategoryNode },
   edgeTypes = { arrow: CategoryEdge };
 export default function CategoryDiagram(props: DiagramProps) {
@@ -124,6 +125,36 @@ export default function CategoryDiagram(props: DiagramProps) {
     fit = useRef(true),
     placed = useRef(""),
     canvas = useRef<HTMLDivElement>(null);
+  const relationPanel = useRef<HTMLDivElement>(null);
+  const [relationPosition, setRelationPosition] = useState<{ left: number; top: number }>();
+  const placeRelationPanel = () => {
+    const panel = relationPanel.current, container = canvas.current;
+    if (!panel || !container) return;
+    const bounds = container.getBoundingClientRect(), current = panel.getBoundingClientRect();
+    const obstacles = [
+      ...container.querySelectorAll<HTMLElement>(".react-flow__node, .category-edge-label, .category-equations"),
+      ...document.querySelectorAll<HTMLElement>(".tutorial-popover, .floating-add-trigger"),
+    ].filter(element => element.checkVisibility({checkVisibilityCSS:true,checkOpacity:true}))
+      .map(element => element.getBoundingClientRect())
+      .filter(box => box.width > 0 && box.height > 0)
+      .map(box => ({left:box.left-bounds.left,top:box.top-bounds.top,width:box.width,height:box.height}));
+    const position = placePopover(
+      // Keep a clear position stable as selection chips appear or the canvas moves.
+      {left:current.left-bounds.left,top:current.top-bounds.top,width:0,height:0},
+      {width:current.width,height:current.height}, bounds, obstacles, false,
+    );
+    setRelationPosition(old => old?.left === position.left && old.top === position.top
+      ? old : {left:position.left,top:position.top});
+  };
+  useEffect(() => {
+    if (mode !== "relation" || !relationPanel.current || !canvas.current) return;
+    let frame = requestAnimationFrame(placeRelationPanel);
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame); frame = requestAnimationFrame(placeRelationPanel);
+    });
+    observer.observe(relationPanel.current); observer.observe(canvas.current);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [mode, nodes, picked, candidates]);
   const routing = useMemo(
     () =>
       routeCategoryReferences(
@@ -587,6 +618,7 @@ export default function CategoryDiagram(props: DiagramProps) {
             defaultEdgeOptions={{ zIndex: 1 }}
             elevateNodesOnSelect={false}
             onNodesChange={onNodesChange}
+            onMoveEnd={placeRelationPanel}
             nodesConnectable={false}
             nodesDraggable={!locked && !editing}
             deleteKeyCode={null}
@@ -656,7 +688,9 @@ export default function CategoryDiagram(props: DiagramProps) {
           )}
           {mode === "relation" && !disabled && (
             <div
+              ref={relationPanel}
               className="relation-composer"
+              style={relationPosition ? {...relationPosition,bottom:"auto",transform:"none"} : undefined}
               role="region"
               aria-label="Select relation arrows"
             >
@@ -669,8 +703,8 @@ export default function CategoryDiagram(props: DiagramProps) {
                 </button>
               </div>
               <p>
-                Select the arrows forming a loop. Click a selected arrow to
-                deselect it.
+                Select arrows forming two paths with the same start and end.
+                Click a selected arrow to deselect it.
               </p>
               {editingRelation && (
                 <div className="relation-current">

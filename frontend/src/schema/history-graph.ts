@@ -1,10 +1,9 @@
 import dagre from "@dagrejs/dagre";
 import type { HistoryInfo } from "../application/history.ts";
-import type { CheckpointInfo } from "../model/workspace.ts";
 export type HistoryGraphNode = {
   id: string;
   position: { x: number; y: number };
-  checkpoint: CheckpointInfo;
+  checkpoint: HistoryInfo["checkpoints"][number];
   height: number;
 };
 export type HistoryGraphLink = { id: string; source: string; target: string };

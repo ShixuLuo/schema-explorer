@@ -75,9 +75,9 @@ function CheckpointNode({ data }: NodeProps<HistoryNode>) {
       >
         <strong>{checkpoint.name}</strong>
         <span className="history-event-meta">
-          {checkpoint.operationCount !== undefined
+          {checkpoint.summary ?? (checkpoint.operationCount !== undefined
             ? `${checkpoint.operationCount} ${checkpoint.operationCount === 1 ? "operation" : "operations"}`
-            : ""}
+            : "Saved checkpoint")}
           {data.editing && (
             <span className="history-editing-position">
               <Icon name="arrow" size={11} />
@@ -311,8 +311,9 @@ function HistoryGraph({
               >
                 <strong>{checkpoint.name}</strong>
                 <span>
-                  {checkpoint.operationCount ?? 0} recorded{" "}
-                  {checkpoint.operationCount === 1 ? "operation" : "operations"}
+                  Saved change: {checkpoint.summary ?? (checkpoint.operationCount === undefined
+                    ? "Saved checkpoint"
+                    : `${checkpoint.operationCount} ${checkpoint.operationCount === 1 ? "operation" : "operations"}`)}
                 </span>
                 <span>
                   Parent:{" "}

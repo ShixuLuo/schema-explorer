@@ -9,7 +9,7 @@ import type { WorkspaceStore } from "./ports.ts";
 
 export type HistoryInfo = {
   editing: string | null;
-  checkpoints: CheckpointInfo[];
+  checkpoints: (CheckpointInfo & { summary?: string })[];
 };
 export type SavedComparison = {
   beforeName: string;
@@ -21,11 +21,19 @@ export function historyInfo(useCase: UseCase): HistoryInfo {
   return {
     editing: useCase.history.editing,
     checkpoints: useCase.history.checkpoints.map(
-      ({ state: _state, operations, legacyMigration: _legacy, ...info }) => ({
-        ...info,
-        tags: info.tags ? [...info.tags] : undefined,
-        operationCount: info.operationCount ?? operations?.length,
-      }),
+      ({ state, operations, legacyMigration: _legacy, ...info }) => {
+        const count = info.operationCount ?? operations?.length;
+        const knownRows = state.tables.every(t => Number.isSafeInteger(t.rowCount) && t.rowCount >= 0);
+        const rows = state.tables.reduce((total, table) => total + table.rowCount, 0);
+        return {
+          ...info,
+          tags: info.tags ? [...info.tags] : undefined,
+          operationCount: count,
+          summary: info.provenance?.kind === "cql-result-import"
+            ? `Data migration · ${state.tables.length} ${state.tables.length === 1 ? "table" : "tables"}${knownRows ? ` · ${rows.toLocaleString("en-US")} ${rows === 1 ? "row" : "rows"}` : ""}`
+            : count === undefined ? "Saved checkpoint" : `${count} ${count === 1 ? "operation" : "operations"}`,
+        };
+      },
     ),
   };
 }

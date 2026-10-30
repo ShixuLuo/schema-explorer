@@ -2,25 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { tutorialChapters, type TutorialContext as Context } from "../tutorial/lessons.ts";
+import { placePopover, type Box } from "../shared/floating-placement.ts";
 
-type Box = { left: number; top: number; width: number; height: number };
 type Rect = Box & { fallback?: boolean; popoverLeft?: number; popoverTop?: number };
-function placePopover(target: Box, width: number, height: number, obstacles: Box[]) {
-  const vw = window.innerWidth, vh = window.innerHeight, gap = 18, inset = 12;
-  const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.left+a.width,b.left+b.width)-Math.max(a.left,b.left)) * Math.max(0,Math.min(a.top+a.height,b.top+b.height)-Math.max(a.top,b.top));
-  const candidates = [
-    [target.left+target.width+gap,target.top], [target.left-width-gap,target.top],
-    [target.left,target.top-height-gap], [target.left,target.top+target.height+gap],
-    [target.left+target.width+gap,target.top+(target.height-height)/2],
-    [target.left-width-gap,target.top+(target.height-height)/2],
-    [inset,60], [vw-width-inset,60], [inset,vh-height-inset], [vw-width-inset,vh-height-inset],
-  ].map(([left,top]) => ({left:Math.max(inset,Math.min(left,vw-width-inset)),top:Math.max(inset,Math.min(top,vh-height-inset)),width,height}));
-  // Large canvas targets contain useful empty space. Avoid their actual controls
-  // and nodes; for a small target, also keep the whole highlighted target clear.
-  const protectTarget = target.width*target.height < vw*vh*0.55;
-  const score = (candidate: Box) => obstacles.reduce((sum,item)=>sum+overlap(candidate,item),0) + (protectTarget?overlap(candidate,target)*8:0) + Math.hypot(candidate.left-target.left,candidate.top-target.top)*(protectTarget ? 50 : 0.02);
-  return candidates.reduce((best,candidate)=>score(candidate)<score(best)?candidate:best);
-}
 export default function Tutorial(
   props: Context & {
     onExit: () => void;
@@ -114,10 +98,22 @@ export default function Tutorial(
       r.width = r.right - r.left;
       r.height = r.bottom - r.top;
       const targetRect = {left:Math.max(0,r.left-5),top:Math.max(0,r.top-5),width:r.width+10,height:r.height+10};
-      const obstacles = [...document.querySelectorAll<HTMLElement>("button, input, select, textarea, .react-flow__node, .category-edge-label, .data-panel, .history-node-menu, .relation-composer, .arrow-creator, .object-creator, .migration-ai-panel, .ai-experiment-panel")]
-        .filter(element=>!element.closest(".tutorial-layer") && getComputedStyle(element).visibility!=="hidden")
-        .map(element=>element.getBoundingClientRect()).filter(item=>item.width>0&&item.height>0&&item.bottom>0&&item.top<window.innerHeight);
-      const placement = placePopover(targetRect, Math.min(300,window.innerWidth-24), popover.current?.getBoundingClientRect().height || 240, obstacles);
+      const dialog = target.closest<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      const scope = dialog ?? document;
+      // Closed details can retain nonzero layout boxes without rendering their contents.
+      const obstacles = [...scope.querySelectorAll<HTMLElement>("button, a, input, select, textarea, label, summary, h2, h3, h4, .migration-heading, .configure-match-row, .react-flow__node, .category-edge-label, .data-panel, .history-node-menu, .relation-composer, .arrow-creator, .object-creator, .migration-ai-panel, .ai-experiment-panel")]
+        .filter(element=>!element.closest(".tutorial-layer") && element.checkVisibility({checkVisibilityCSS:true,checkOpacity:true}))
+        .map(element=>{
+          if(element.matches("h2, h3, h4")) {
+            const text=document.createRange();text.selectNodeContents(element);
+            return text.getBoundingClientRect();
+          }
+          return element.getBoundingClientRect();
+        }).filter(item=>item.width>0&&item.height>0&&item.bottom>0&&item.top<window.innerHeight);
+      const placement = placePopover(targetRect,
+        { width: Math.min(300,window.innerWidth-24), height: popover.current?.getBoundingClientRect().height || 240 },
+        { width: window.innerWidth, height: window.innerHeight }, obstacles,
+        !dialog && targetRect.width * targetRect.height < window.innerWidth * window.innerHeight * 0.55);
       const next = {...targetRect,fallback,popoverLeft:placement.left,popoverTop:placement.top};
       setRect(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
     };
